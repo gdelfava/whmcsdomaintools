@@ -1,0 +1,32 @@
+# Cache files
+cache/
+*.cache
+
+# Log files
+logs/
+*.log
+ns_update_log.txt
+
+# User settings (may contain sensitive data)
+user_settings/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.temp
+
+# PHP session files
+sess_*
+
+# Backup files
+*.bak
+*.backup 

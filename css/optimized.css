@@ -1,0 +1,70 @@
+/* Critical CSS - Optimized for fast loading */
+.loading-spinner{display:inline-block;width:20px;height:20px;border:3px solid rgba(255,255,255,.3);border-radius:50%;border-top-color:#fff;animation:spin 1s ease-in-out infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* Loading overlay */
+#spa-loading{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(255,255,255,0.9);z-index:9999;display:flex;align-items:center;justify-content:center}
+#spa-loading.hidden{display:none}
+
+/* Loading animation */
+.animate-spin{animation:spin 1s linear infinite}
+
+/* Fast transitions */
+.transition-fast{transition:all 0.15s ease}
+.transition-normal{transition:all 0.3s ease}
+
+/* Preload hints */
+.preload-content{opacity:0;transform:translateY(10px);transition:all 0.3s ease}
+.preload-content.loaded{opacity:1;transform:translateY(0)}
+
+/* Performance optimizations */
+.gpu-optimized{transform:translateZ(0);will-change:transform,opacity}
+.contain-layout{contain:layout style paint}
+
+/* Critical navigation styles */
+nav a{transition:all 0.15s ease}
+nav a.active{background:#f0f9ff;color:#0369a1;border-left:4px solid #0284c7}
+
+/* Critical grid styles */
+.grid-fast{display:grid}
+.flex-fast{display:flex}
+.items-center{align-items:center}
+.justify-between{justify-content:space-between}
+
+/* Critical text styles */
+.text-gray-900{color:#111827}
+.text-gray-600{color:#4b5563}
+.text-gray-500{color:#6b7280}
+.font-bold{font-weight:700}
+.font-semibold{font-weight:600}
+
+/* Critical spacing */
+.p-4{padding:1rem}
+.p-6{padding:1.5rem}
+.mb-4{margin-bottom:1rem}
+.mb-6{margin-bottom:1.5rem}
+.space-x-2>*+*{margin-left:0.5rem}
+.space-y-4>*+*{margin-top:1rem}
+
+/* Critical buttons */
+.btn-primary{background:linear-gradient(135deg,#0284c7,#0369a1);color:white;padding:0.75rem 1.5rem;border-radius:0.5rem;border:none;cursor:pointer;transition:all 0.15s ease}
+.btn-primary:hover{background:linear-gradient(135deg,#0369a1,#075985);transform:translateY(-1px)}
+
+/* Critical cards */
+.card{background:white;border:1px solid #e5e7eb;border-radius:0.75rem;box-shadow:0 4px 6px -1px rgba(0,0,0,0.1)}
+
+/* Mobile responsive */
+@media(max-width:768px){
+.mobile-stack{flex-direction:column}
+.mobile-full{width:100%}
+}
+
+/* Dark mode support */
+@media(prefers-color-scheme:dark){
+.card{background:#1f2937;border-color:#374151;color:#f9fafb}
+}
+
+/* Reduce motion for accessibility */
+@media(prefers-reduced-motion:reduce){
+*{animation-duration:0.01ms!important;animation-iteration-count:1!important;transition-duration:0.01ms!important}
+} 
