@@ -1,7 +1,15 @@
 <?php
 require_once 'config.php';
 
-session_start();
+// Start session with error handling
+if (session_status() === PHP_SESSION_NONE) {
+    try {
+        session_start();
+    } catch (Exception $e) {
+        error_log('Session start error: ' . $e->getMessage());
+        // Continue without session for debugging
+    }
+}
 
 function firebaseRequest($endpoint, $data) {
     global $firebaseApiKey;
@@ -13,15 +21,35 @@ function firebaseRequest($endpoint, $data) {
     curl_setopt($ch, CURLOPT_POST, true);
     curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 10); // Add timeout
+    curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 5); // Connection timeout
     curl_setopt($ch, CURLOPT_HTTPHEADER, [
         'Content-Type: application/json'
     ]);
     
     $response = curl_exec($ch);
     $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $curl_error = curl_error($ch);
     curl_close($ch);
     
-    return json_decode($response, true);
+    // Log Firebase connection issues
+    if ($curl_error) {
+        error_log('Firebase connection error: ' . $curl_error);
+        return ['error' => 'Firebase connection failed: ' . $curl_error];
+    }
+    
+    if ($httpCode !== 200) {
+        error_log('Firebase HTTP error: ' . $httpCode);
+        return ['error' => 'Firebase HTTP error: ' . $httpCode];
+    }
+    
+    $decoded = json_decode($response, true);
+    if (json_last_error() !== JSON_ERROR_NONE) {
+        error_log('Firebase JSON decode error: ' . json_last_error_msg());
+        return ['error' => 'Firebase response decode error'];
+    }
+    
+    return $decoded;
 }
 
 function registerUser($email, $password) {
@@ -47,23 +75,36 @@ function loginUser($email, $password) {
 function verifyIdToken($idToken) {
     global $firebaseConfig;
     
-    // Simple token verification - in production you should verify the JWT signature
-    $url = 'https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=' . $firebaseConfig['apiKey'];
-    
-    $ch = curl_init();
-    curl_setopt($ch, CURLOPT_URL, $url);
-    curl_setopt($ch, CURLOPT_POST, true);
-    curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode(['idToken' => $idToken]));
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_HTTPHEADER, [
-        'Content-Type: application/json'
-    ]);
-    
-    $response = curl_exec($ch);
-    curl_close($ch);
-    
-    $result = json_decode($response, true);
-    return isset($result['users']) && !empty($result['users']);
+    try {
+        // Simple token verification - in production you should verify the JWT signature
+        $url = 'https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=' . $firebaseConfig['apiKey'];
+        
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, $url);
+        curl_setopt($ch, CURLOPT_POST, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode(['idToken' => $idToken]));
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 10);
+        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 5);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, [
+            'Content-Type: application/json'
+        ]);
+        
+        $response = curl_exec($ch);
+        $curl_error = curl_error($ch);
+        curl_close($ch);
+        
+        if ($curl_error) {
+            error_log('Firebase token verification error: ' . $curl_error);
+            return false;
+        }
+        
+        $result = json_decode($response, true);
+        return isset($result['users']) && !empty($result['users']);
+    } catch (Exception $e) {
+        error_log('Firebase token verification exception: ' . $e->getMessage());
+        return false;
+    }
 }
 
 function isLoggedIn() {
@@ -71,7 +112,39 @@ function isLoggedIn() {
 }
 
 function requireAuth() {
-    if (!isLoggedIn()) {
+    try {
+        if (!isLoggedIn()) {
+            // For AJAX requests, return JSON error instead of redirect
+            if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && $_SERVER['HTTP_X_REQUESTED_WITH'] === 'XMLHttpRequest') {
+                header('Content-Type: application/json');
+                http_response_code(401);
+                echo json_encode([
+                    'success' => false,
+                    'error' => 'Authentication required',
+                    'redirect' => 'auth_page.php'
+                ]);
+                exit;
+            }
+            
+            header('Location: auth_page.php');
+            exit;
+        }
+    } catch (Exception $e) {
+        error_log('Auth check error: ' . $e->getMessage());
+        
+        // For AJAX requests, return JSON error
+        if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && $_SERVER['HTTP_X_REQUESTED_WITH'] === 'XMLHttpRequest') {
+            header('Content-Type: application/json');
+            http_response_code(500);
+            echo json_encode([
+                'success' => false,
+                'error' => 'Authentication system error',
+                'debug' => $e->getMessage()
+            ]);
+            exit;
+        }
+        
+        // For regular requests, redirect to login
         header('Location: auth_page.php');
         exit;
     }

@@ -160,6 +160,14 @@ class SPARouter {
             });
             
             if (!response.ok) {
+                // Handle authentication errors
+                if (response.status === 401) {
+                    const data = await response.json().catch(() => ({}));
+                    if (data.redirect) {
+                        window.location.href = data.redirect;
+                        return;
+                    }
+                }
                 throw new Error(`HTTP ${response.status}`);
             }
             
@@ -174,6 +182,11 @@ class SPARouter {
                 
                 return data.html;
             } else {
+                // Handle authentication redirect
+                if (data.redirect) {
+                    window.location.href = data.redirect;
+                    return;
+                }
                 throw new Error(data.error || 'Unknown error');
             }
             

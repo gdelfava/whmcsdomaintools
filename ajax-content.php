@@ -1,4 +1,15 @@
 <?php
+// PHP 8.1 compatibility fixes
+if (version_compare(PHP_VERSION, '8.0.0', '>=')) {
+    // Ensure proper error reporting for debugging
+    error_reporting(E_ALL & ~E_DEPRECATED & ~E_STRICT);
+    ini_set('display_errors', 0);
+    ini_set('log_errors', 1);
+}
+
+// Enable error logging to a file for debugging
+ini_set('error_log', __DIR__ . '/logs/php_errors.log');
+
 require_once 'auth.php';
 require_once 'api.php';
 require_once 'user_settings.php';
@@ -19,11 +30,17 @@ if (!isset($_SERVER['HTTP_X_REQUESTED_WITH']) || $_SERVER['HTTP_X_REQUESTED_WITH
 
 $view = $_GET['view'] ?? 'dashboard';
 
+// Log the request for debugging
+error_log("AJAX request for view: " . $view . " from IP: " . ($_SERVER['REMOTE_ADDR'] ?? 'unknown'));
+
 try {
     // Check if user has settings configured
     $hasSettings = userHasSettings();
     $settingsValidation = validateSettingsCompleteness();
     $currentSettings = getUserSettings();
+    
+    // Log settings status for debugging
+    error_log("Settings check - hasSettings: " . ($hasSettings ? 'true' : 'false') . ", validation: " . json_encode($settingsValidation));
     
     // Start output buffering to capture content
     ob_start();
@@ -57,10 +74,17 @@ try {
             break;
             
         default:
-            throw new Exception('Invalid view requested');
+            throw new Exception('Invalid view requested: ' . $view);
     }
     
     $content = ob_get_clean();
+    
+    if ($content === false) {
+        throw new Exception('Failed to capture output content');
+    }
+    
+    // Log successful response
+    error_log("Successfully generated content for view: " . $view . " (length: " . strlen($content) . ")");
     
     echo json_encode([
         'success' => true,
@@ -69,10 +93,24 @@ try {
     ]);
     
 } catch (Exception $e) {
-    ob_end_clean();
+    // Clean up any output buffer
+    if (ob_get_level() > 0) {
+        ob_end_clean();
+    }
+    
+    // Log the error for debugging
+    error_log('AJAX content error for view ' . $view . ': ' . $e->getMessage());
+    error_log('Error trace: ' . $e->getTraceAsString());
+    
     echo json_encode([
         'success' => false,
-        'error' => $e->getMessage()
+        'error' => $e->getMessage(),
+        'view' => $view,
+        'debug_info' => [
+            'php_version' => PHP_VERSION,
+            'memory_usage' => memory_get_usage(true),
+            'peak_memory' => memory_get_peak_usage(true)
+        ]
     ]);
 }
 
@@ -327,26 +365,33 @@ $domainStatusStats = [
     if ($hasSettings) {
         $userSettings = getUserSettings();
         if ($userSettings) {
-            // Use caching for stats data (refresh every 5 minutes)
-            $userEmail = $_SESSION['user_email'] ?? 'unknown';
-            $cacheKey = 'income_stats_' . md5($userSettings['api_url'] . $userSettings['api_identifier']);
-            
-            $statsResponse = getCachedApiResponse($cacheKey, $userEmail, function() use ($userSettings) {
-                return curlCall($userSettings['api_url'], [
-                    'action' => 'GetStats',
-                    'identifier' => $userSettings['api_identifier'],
-                    'secret' => $userSettings['api_secret'],
-                    'responsetype' => 'json'
-                ]);
-            }, 300); // Cache for 5 minutes
-            
-                    if (isset($statsResponse['result']) && $statsResponse['result'] === 'success') {
-            $incomeStats = [
-                'income_today' => $statsResponse['income_today'] ?? '$0.00',
-                'income_thismonth' => $statsResponse['income_thismonth'] ?? '$0.00',
-                'income_thisyear' => $statsResponse['income_thisyear'] ?? '$0.00',
-                'income_alltime' => $statsResponse['income_alltime'] ?? '$0.00'
-            ];
+            try {
+                // Use caching for stats data (refresh every 5 minutes)
+                $userEmail = isset($_SESSION['user_email']) ? $_SESSION['user_email'] : 'unknown';
+                $cacheKey = 'income_stats_' . md5($userSettings['api_url'] . $userSettings['api_identifier']);
+                
+                $statsResponse = getCachedApiResponse($cacheKey, $userEmail, function() use ($userSettings) {
+                    return curlCall($userSettings['api_url'], [
+                        'action' => 'GetStats',
+                        'identifier' => $userSettings['api_identifier'],
+                        'secret' => $userSettings['api_secret'],
+                        'responsetype' => 'json'
+                    ]);
+                }, 300); // Cache for 5 minutes
+                
+                if (isset($statsResponse['result']) && $statsResponse['result'] === 'success') {
+                    $incomeStats = [
+                        'income_today' => isset($statsResponse['income_today']) ? $statsResponse['income_today'] : '$0.00',
+                        'income_thismonth' => isset($statsResponse['income_thismonth']) ? $statsResponse['income_thismonth'] : '$0.00',
+                        'income_thisyear' => isset($statsResponse['income_thisyear']) ? $statsResponse['income_thisyear'] : '$0.00',
+                        'income_alltime' => isset($statsResponse['income_alltime']) ? $statsResponse['income_alltime'] : '$0.00'
+                    ];
+                }
+            } catch (Exception $e) {
+                // Log error for debugging
+                error_log('Dashboard stats error: ' . $e->getMessage());
+                // Continue with default values
+            }
         }
         
         // Get domain status distribution
@@ -364,7 +409,6 @@ $domainStatusStats = [
                     $domainStatusStats['Other']++;
                 }
             }
-        }
         }
     }
 
@@ -432,7 +476,7 @@ $domainStatusStats = [
                         Your WHMCS API configuration is incomplete.
                     <?php endif; ?>
                 </p>
-                <a href="#" onclick="window.spaRouter.navigateTo('settings')" class="inline-flex items-center space-x-2 bg-yellow-600 hover:bg-yellow-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors">
+                <a href="?view=settings" class="inline-flex items-center space-x-2 bg-yellow-600 hover:bg-yellow-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors">
                     <i data-lucide="settings" class="w-4 h-4"></i>
                     <span>Configure API Settings</span>
                 </a>
@@ -1268,28 +1312,34 @@ function renderBillingContent($hasSettings, $currentSettings) {
         'income_alltime' => '$0.00'
     ];
 
-    if ($hasSettings && $currentSettings) {
-        // Use caching for stats data (refresh every 5 minutes)
-        $userEmail = $_SESSION['user_email'] ?? 'unknown';
-        $cacheKey = 'income_stats_' . md5($currentSettings['api_url'] . $currentSettings['api_identifier']);
-        
-        $statsResponse = getCachedApiResponse($cacheKey, $userEmail, function() use ($currentSettings) {
-            return curlCall($currentSettings['api_url'], [
-                'action' => 'GetStats',
-                'identifier' => $currentSettings['api_identifier'],
-                'secret' => $currentSettings['api_secret'],
-                'responsetype' => 'json'
-            ]);
-        }, 300); // Cache for 5 minutes
-        
-        if (isset($statsResponse['result']) && $statsResponse['result'] === 'success') {
-            $incomeStats = [
-                'income_today' => $statsResponse['income_today'] ?? '$0.00',
-                'income_thismonth' => $statsResponse['income_thismonth'] ?? '$0.00',
-                'income_thisyear' => $statsResponse['income_thisyear'] ?? '$0.00',
-                'income_alltime' => $statsResponse['income_alltime'] ?? '$0.00'
-            ];
+    try {
+        if ($hasSettings && $currentSettings) {
+            // Use caching for stats data (refresh every 5 minutes)
+            $userEmail = isset($_SESSION['user_email']) ? $_SESSION['user_email'] : 'unknown';
+            $cacheKey = 'income_stats_' . md5($currentSettings['api_url'] . $currentSettings['api_identifier']);
+            
+            $statsResponse = getCachedApiResponse($cacheKey, $userEmail, function() use ($currentSettings) {
+                return curlCall($currentSettings['api_url'], [
+                    'action' => 'GetStats',
+                    'identifier' => $currentSettings['api_identifier'],
+                    'secret' => $currentSettings['api_secret'],
+                    'responsetype' => 'json'
+                ]);
+            }, 300); // Cache for 5 minutes
+            
+            if (isset($statsResponse['result']) && $statsResponse['result'] === 'success') {
+                $incomeStats = [
+                    'income_today' => isset($statsResponse['income_today']) ? $statsResponse['income_today'] : '$0.00',
+                    'income_thismonth' => isset($statsResponse['income_thismonth']) ? $statsResponse['income_thismonth'] : '$0.00',
+                    'income_thisyear' => isset($statsResponse['income_thisyear']) ? $statsResponse['income_thisyear'] : '$0.00',
+                    'income_alltime' => isset($statsResponse['income_alltime']) ? $statsResponse['income_alltime'] : '$0.00'
+                ];
+            }
         }
+    } catch (Exception $e) {
+        // Log error for debugging
+        error_log('Billing content error: ' . $e->getMessage());
+        // Continue with default values
     }
     ?>
     <!-- Page Header -->
@@ -1375,28 +1425,34 @@ function renderOrdersContent($hasSettings, $currentSettings) {
         'orders_thisyear_total' => '0'
     ];
 
-    if ($hasSettings && $currentSettings) {
-        // Use caching for stats data (refresh every 5 minutes)
-        $userEmail = $_SESSION['user_email'] ?? 'unknown';
-        $cacheKey = 'orders_stats_' . md5($currentSettings['api_url'] . $currentSettings['api_identifier']);
-        
-        $statsResponse = getCachedApiResponse($cacheKey, $userEmail, function() use ($currentSettings) {
-            return curlCall($currentSettings['api_url'], [
-                'action' => 'GetStats',
-                'identifier' => $currentSettings['api_identifier'],
-                'secret' => $currentSettings['api_secret'],
-                'responsetype' => 'json'
-            ]);
-        }, 300); // Cache for 5 minutes
-        
-        if (isset($statsResponse['result']) && $statsResponse['result'] === 'success') {
-            $ordersStats = [
-                'orders_today_total' => $statsResponse['orders_today_total'] ?? '0',
-                'orders_yesterday_total' => $statsResponse['orders_yesterday_total'] ?? '0',
-                'orders_thismonth_total' => $statsResponse['orders_thismonth_total'] ?? '0',
-                'orders_thisyear_total' => $statsResponse['orders_thisyear_total'] ?? '0'
-            ];
+    try {
+        if ($hasSettings && $currentSettings) {
+            // Use caching for stats data (refresh every 5 minutes)
+            $userEmail = isset($_SESSION['user_email']) ? $_SESSION['user_email'] : 'unknown';
+            $cacheKey = 'orders_stats_' . md5($currentSettings['api_url'] . $currentSettings['api_identifier']);
+            
+            $statsResponse = getCachedApiResponse($cacheKey, $userEmail, function() use ($currentSettings) {
+                return curlCall($currentSettings['api_url'], [
+                    'action' => 'GetStats',
+                    'identifier' => $currentSettings['api_identifier'],
+                    'secret' => $currentSettings['api_secret'],
+                    'responsetype' => 'json'
+                ]);
+            }, 300); // Cache for 5 minutes
+            
+            if (isset($statsResponse['result']) && $statsResponse['result'] === 'success') {
+                $ordersStats = [
+                    'orders_today_total' => isset($statsResponse['orders_today_total']) ? $statsResponse['orders_today_total'] : '0',
+                    'orders_yesterday_total' => isset($statsResponse['orders_yesterday_total']) ? $statsResponse['orders_yesterday_total'] : '0',
+                    'orders_thismonth_total' => isset($statsResponse['orders_thismonth_total']) ? $statsResponse['orders_thismonth_total'] : '0',
+                    'orders_thisyear_total' => isset($statsResponse['orders_thisyear_total']) ? $statsResponse['orders_thisyear_total'] : '0'
+                ];
+            }
         }
+    } catch (Exception $e) {
+        // Log error for debugging
+        error_log('Orders content error: ' . $e->getMessage());
+        // Continue with default values
     }
     ?>
     <!-- Page Header -->

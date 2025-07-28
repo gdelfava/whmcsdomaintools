@@ -590,8 +590,7 @@ if (userHasSettings()) {
     <style>
     .loading-spinner{display:inline-block;width:20px;height:20px;border:3px solid rgba(255,255,255,.3);border-radius:50%;border-top-color:#fff;animation:spin 1s ease-in-out infinite}
     @keyframes spin{to{transform:rotate(360deg)}}
-    #spa-loading{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(255,255,255,0.9);z-index:9999;display:flex;align-items:center;justify-content:center}
-    #spa-loading.hidden{display:none}
+
     .animate-spin{animation:spin 1s linear infinite}
     </style>
     
@@ -788,7 +787,7 @@ if (userHasSettings()) {
                                         </div>
                                     <?php endif; ?>
                                     
-                                <a href="settings.php" class="inline-flex items-center space-x-2 bg-yellow-600 hover:bg-yellow-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors">
+                                <a href="?view=settings" class="inline-flex items-center space-x-2 bg-yellow-600 hover:bg-yellow-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors">
                                     <i data-lucide="settings" class="w-4 h-4"></i>
                                         <span>Configure API Settings</span>
                                     </a>
@@ -2081,8 +2080,6 @@ if (userHasSettings()) {
          </div>
      </div>
 
-    <!-- SPA Router for fast navigation -->
-    <script src="js/spa-router.js"></script>
     <script src="js/dashboard.js"></script>
     <script>
         // Initialize Lucide icons
