@@ -49,6 +49,12 @@ $firebaseConfig = [
 $firebaseAuthUrl = 'https://identitytoolkit.googleapis.com/v1/accounts:';
 $firebaseApiKey = $firebaseConfig['apiKey'];
 
+// === ENCRYPTION CONFIGURATION ===
+// Define encryption key for user settings (32+ characters recommended)
+if (!defined('ENCRYPTION_KEY')) {
+    define('ENCRYPTION_KEY', getEnvVar('ENCRYPTION_KEY', 'default_encryption_key_2024'));
+}
+
 // === WHMCS CONFIGURATION ===
 // These are now handled by user settings, but keeping commented for reference
 // $apiUrl = 'https://yourdomain.com/includes/api.php'; // Replace with your WHMCS API URL

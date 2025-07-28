@@ -1062,7 +1062,7 @@ if (userHasSettings()) {
                                  <i data-lucide="dollar-sign" class="w-4 h-4 text-green-600"></i>
                              </div>
                          </div>
-                         <div class="text-2xl font-bold text-gray-900 mb-1"><?= htmlspecialchars($incomeStats['income_today']) ?></div>
+                         <div class="text-4xl font-bold text-gray-900 mb-1"><?= htmlspecialchars($incomeStats['income_today']) ?></div>
                          <p class="text-green-600 text-sm">Revenue generated today</p>
                      </div>
 
@@ -1074,7 +1074,7 @@ if (userHasSettings()) {
                                  <i data-lucide="calendar" class="w-4 h-4 text-blue-600"></i>
                              </div>
                          </div>
-                         <div class="text-2xl font-bold text-gray-900 mb-1"><?= htmlspecialchars($incomeStats['income_thismonth']) ?></div>
+                         <div class="text-4xl font-bold text-gray-900 mb-1"><?= htmlspecialchars($incomeStats['income_thismonth']) ?></div>
                          <p class="text-blue-600 text-sm">Monthly revenue</p>
                      </div>
 
@@ -1086,7 +1086,7 @@ if (userHasSettings()) {
                                  <i data-lucide="trending-up" class="w-4 h-4 text-purple-600"></i>
                              </div>
                          </div>
-                         <div class="text-2xl font-bold text-gray-900 mb-1"><?= htmlspecialchars($incomeStats['income_thisyear']) ?></div>
+                         <div class="text-4xl font-bold text-gray-900 mb-1"><?= htmlspecialchars($incomeStats['income_thisyear']) ?></div>
                          <p class="text-purple-600 text-sm">Annual revenue</p>
                      </div>
 
@@ -1098,7 +1098,7 @@ if (userHasSettings()) {
                                  <i data-lucide="trophy" class="w-4 h-4 text-amber-600"></i>
                              </div>
                          </div>
-                         <div class="text-2xl font-bold text-gray-900 mb-1"><?= htmlspecialchars($incomeStats['income_alltime']) ?></div>
+                         <div class="text-4xl font-bold text-gray-900 mb-1"><?= htmlspecialchars($incomeStats['income_alltime']) ?></div>
                          <p class="text-amber-600 text-sm">Total lifetime revenue</p>
                      </div>
                  </div>
