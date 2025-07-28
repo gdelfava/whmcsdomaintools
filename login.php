@@ -111,14 +111,12 @@ if ($sessionError) {
             <div class="p-8">
                 <!-- App Header -->
                 <div class="text-center mb-8">
-                    <div class="flex items-center justify-center space-x-3 mb-4">
-                        <div class="w-10 h-10 bg-primary-600 rounded-lg flex items-center justify-center">
-                            <i data-lucide="globe" class="w-6 h-6 text-white"></i>
-                        </div>
-                        <div class="text-left">
-                            <h1 class="text-xl font-bold text-gray-900">Domain Tools</h1>
-                            <p class="text-xs text-gray-500">Management Suite</p>
-                        </div>
+                    <!-- Logo -->
+                    <div class="mb-4 flex justify-center">
+                        <img src="<?= htmlspecialchars(getLogoUrl()) ?>" 
+                             alt="Logo" 
+                             class="h-12 max-w-full object-contain"
+                             onerror="this.style.display='none';">
                     </div>
                     <h2 class="text-2xl font-bold text-gray-900 mb-2">
                         <?= $showRegister ? 'Create Account' : 'Welcome Back' ?>
