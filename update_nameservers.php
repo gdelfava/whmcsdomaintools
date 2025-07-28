@@ -26,12 +26,32 @@ if (!$userSettings) {
     // === MAIN LOGIC ===
     $response = getAllDomains($userSettings['api_url'], $userSettings['api_identifier'], $userSettings['api_secret']);
     $allDomains = $response['domains']['domain'] ?? [];
+    
+    // Clear cache if debug mode is enabled
+    if (isset($_GET['clear_cache'])) {
+        $cache = new SimpleCache();
+        $cacheKey = 'all_domains_' . md5($userSettings['api_url'] . $userSettings['api_identifier']);
+        $cache->delete($cacheKey, $_SESSION['user_email']);
+        $message = 'Cache cleared. Refreshing...';
+        header('Location: ' . $_SERVER['PHP_SELF'] . '?view=update_nameservers');
+        exit;
+    }
 }
 
-// Sort domains alphabetically by domainname
+// Sort domains alphabetically by domainname (case-insensitive)
 usort($allDomains, function($a, $b) {
-    return strcmp($a['domainname'], $b['domainname']);
+    $domainA = strtolower($a['domainname'] ?? '');
+    $domainB = strtolower($b['domainname'] ?? '');
+    return strcmp($domainA, $domainB);
 });
+
+// Debug: Log the first few domains to verify sorting (only in debug mode)
+if (isset($_GET['debug']) && count($allDomains) > 0) {
+    error_log("Update Nameservers - First 5 domains after sorting:");
+    for ($i = 0; $i < min(5, count($allDomains)); $i++) {
+        error_log("  " . ($i + 1) . ". " . $allDomains[$i]['domainname']);
+    }
+}
 
 $message = '';
 $updateResults = [];
@@ -197,11 +217,12 @@ if (isset($_POST['update']) && !empty($_POST['domain']) && is_array($_POST['doma
                         <form method="POST" class="space-y-6">
                             <div class="form-group">
                                 <div class="flex justify-between items-center mb-3">
-                                    <label for="domain" class="form-label">Available Domains (<?= count($allDomains) ?> total)</label>
-                                    <div class="flex gap-2">
-                                        <button type="button" id="selectAllBtn" class="btn btn-sm btn-outline">Select All</button>
-                                        <button type="button" id="clearAllBtn" class="btn btn-sm btn-secondary">Clear All</button>
-                                    </div>
+                                    <label for="domain" class="form-label">Available Domains (<?= count($allDomains) ?> total, sorted alphabetically)</label>
+                                                                    <div class="flex gap-2">
+                                    <button type="button" id="selectAllBtn" class="btn btn-sm btn-outline">Select All</button>
+                                    <button type="button" id="clearAllBtn" class="btn btn-sm btn-secondary">Clear All</button>
+                                    <button type="button" onclick="showCacheModal()" class="btn btn-sm btn-warning">Clear Cache</button>
+                                </div>
                                 </div>
                                 
                                 <select name="domain[]" id="domain" required multiple class="form-select" style="min-height: 300px;">
@@ -536,5 +557,8 @@ if (isset($_POST['update']) && !empty($_POST['domain']) && is_array($_POST['doma
             overflow-x: auto;
         }
     </style>
+    
+    <!-- Cache Modal Script -->
+    <script src="js/cache-modal.js"></script>
 </body>
 </html> 

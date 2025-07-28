@@ -47,6 +47,14 @@ function getAllDomains($url, $identifier, $secret) {
     
     // If direct call works, return it
     if (isset($response['domains']['domain']) && !empty($response['domains']['domain'])) {
+        // Sort domains alphabetically before caching (case-insensitive)
+        $domains = $response['domains']['domain'];
+        usort($domains, function($a, $b) {
+            $domainA = strtolower($a['domainname'] ?? '');
+            $domainB = strtolower($b['domainname'] ?? '');
+            return strcmp($domainA, $domainB);
+        });
+        $response['domains']['domain'] = $domains;
         return $response;
     }
     
@@ -102,8 +110,21 @@ function getAllDomains($url, $identifier, $secret) {
             }
         }
     }
+    
+    // Sort all domains alphabetically before returning (case-insensitive)
+    usort($allDomains, function($a, $b) {
+        $domainA = strtolower($a['domainname'] ?? '');
+        $domainB = strtolower($b['domainname'] ?? '');
+        return strcmp($domainA, $domainB);
+    });
+    
+    return [
+        'domains' => [
+            'domain' => $allDomains
+        ]
+    ];
         
-    return ['domains' => ['domain' => $allDomains]];
+    
     }, 300); // Cache for 5 minutes
 }
 

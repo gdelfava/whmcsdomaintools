@@ -1479,7 +1479,7 @@ function renderOrdersContent($hasSettings, $currentSettings) {
                         <i data-lucide="shopping-bag" class="w-4 h-4 text-green-600"></i>
                     </div>
                 </div>
-                <div class="text-2xl font-bold text-gray-900 mb-1"><?= htmlspecialchars($ordersStats['orders_today_total']) ?></div>
+                <div class="text-4xl font-bold text-gray-900 mb-1"><?= htmlspecialchars($ordersStats['orders_today_total']) ?></div>
                 <p class="text-green-600 text-sm">Orders received today</p>
             </div>
 
@@ -1491,7 +1491,7 @@ function renderOrdersContent($hasSettings, $currentSettings) {
                         <i data-lucide="calendar-days" class="w-4 h-4 text-blue-600"></i>
                     </div>
                 </div>
-                <div class="text-2xl font-bold text-gray-900 mb-1"><?= htmlspecialchars($ordersStats['orders_yesterday_total']) ?></div>
+                <div class="text-4xl font-bold text-gray-900 mb-1"><?= htmlspecialchars($ordersStats['orders_yesterday_total']) ?></div>
                 <p class="text-blue-600 text-sm">Orders from yesterday</p>
             </div>
 
@@ -1503,7 +1503,7 @@ function renderOrdersContent($hasSettings, $currentSettings) {
                         <i data-lucide="trending-up" class="w-4 h-4 text-purple-600"></i>
                     </div>
                 </div>
-                <div class="text-2xl font-bold text-gray-900 mb-1"><?= htmlspecialchars($ordersStats['orders_thismonth_total']) ?></div>
+                <div class="text-4xl font-bold text-gray-900 mb-1"><?= htmlspecialchars($ordersStats['orders_thismonth_total']) ?></div>
                 <p class="text-purple-600 text-sm">Monthly order volume</p>
             </div>
 
@@ -1515,7 +1515,7 @@ function renderOrdersContent($hasSettings, $currentSettings) {
                         <i data-lucide="bar-chart-3" class="w-4 h-4 text-amber-600"></i>
                     </div>
                 </div>
-                <div class="text-2xl font-bold text-gray-900 mb-1"><?= htmlspecialchars($ordersStats['orders_thisyear_total']) ?></div>
+                <div class="text-4xl font-bold text-gray-900 mb-1"><?= htmlspecialchars($ordersStats['orders_thisyear_total']) ?></div>
                 <p class="text-amber-600 text-sm">Annual order volume</p>
             </div>
         </div>
