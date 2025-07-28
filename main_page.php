@@ -3,6 +3,7 @@ require_once 'auth.php';
 require_once 'api.php';
 require_once 'user_settings.php';
 require_once 'cache.php';
+require_once 'database.php';
 
 // Require authentication
 requireAuth();
@@ -1407,62 +1408,78 @@ if (userHasSettings()) {
                  <!-- Domains Content -->
                  <!-- Page Header -->
                  <div class="mb-8">
-                     <h1 class="text-2xl font-bold text-gray-900 mb-2">Domains</h1>
-                     <p class="text-gray-600">View and manage all your registered domains.</p>
+                     <div class="flex items-center justify-between">
+                         <div>
+                             <h1 class="text-2xl font-bold text-gray-900 mb-2">Domains</h1>
+                             <p class="text-gray-600">View and manage all your registered domains from local database.</p>
+                         </div>
+                         <div class="flex items-center space-x-4">
+                             <a href="domains_db.php" class="btn btn-secondary">
+                                 <i data-lucide="database" class="w-4 h-4 mr-2"></i>
+                                 Database View
+                             </a>
+                             <a href="sync_interface.php" class="btn btn-primary">
+                                 <i data-lucide="refresh-cw" class="w-4 h-4 mr-2"></i>
+                                 Sync Now
+                             </a>
+                         </div>
+                     </div>
                  </div>
 
                  <?php
-                 // Pagination logic
-                 $domainsPerPage = 25; // Number of domains per page
-                 $currentPage = isset($_GET['page']) ? max(1, intval($_GET['page'])) : 1;
-                 $totalDomains = count($allDomains);
-                 $totalPages = ceil($totalDomains / $domainsPerPage);
-                 $offset = ($currentPage - 1) * $domainsPerPage;
-                 
-                 // Sort domains alphabetically by domain name
-                 usort($allDomains, function($a, $b) {
-                     return strcasecmp($a['domainname'], $b['domainname']);
-                 });
-                 
-                 // Get domains for current page
-                 $domainsForPage = array_slice($allDomains, $offset, $domainsPerPage);
-                 
-                 // Get domain statistics for the stats cards
-                 $domainStats = [
-                     'total_projects' => 0,
-                     'ended_projects' => 0,
-                     'running_projects' => 0,
-                     'pending_projects' => 0
-                 ];
-
-                 if (userHasSettings()) {
-                     $userSettings = getUserSettings();
-                     if ($userSettings) {
-                         $domainStats['total_projects'] = count($allDomains);
-                         
-                         // Count domains by status
-                         foreach ($allDomains as $domain) {
-                             $status = strtolower($domain['status'] ?? 'unknown');
-                             switch ($status) {
-                                 case 'active':
-                                     $domainStats['running_projects']++;
-                                     break;
-                                 case 'expired':
-                                 case 'terminated':
-                                 case 'cancelled':
-                                     $domainStats['ended_projects']++;
-                                     break;
-                                 case 'pending':
-                                 case 'pendingtransfer':
-                                 case 'pendingregistration':
-                                     $domainStats['pending_projects']++;
-                                     break;
-                                 default:
-                                     $domainStats['pending_projects']++;
-                                     break;
-                             }
-                         }
+                 // Initialize database for domains view
+                 try {
+                     $db = Database::getInstance();
+                     
+                     // Pagination logic
+                     $domainsPerPage = 25; // Number of domains per page
+                     $currentPage = isset($_GET['page']) ? max(1, intval($_GET['page'])) : 1;
+                     
+                     // Get domains from database
+                     $domainsForPage = $db->getDomains($currentPage, $domainsPerPage, '', '', 'domain_name', 'ASC');
+                     $totalDomains = $db->getDomainCount('', '');
+                     $totalPages = ceil($totalDomains / $domainsPerPage);
+                     $offset = ($currentPage - 1) * $domainsPerPage;
+                     
+                     // Get domain statistics from database
+                     $dbStats = $db->getDomainStats();
+                     $domainStats = [
+                         'total_projects' => $dbStats['total_domains'] ?? 0,
+                         'running_projects' => $dbStats['active_domains'] ?? 0,
+                         'ended_projects' => $dbStats['expired_domains'] ?? 0,
+                         'pending_projects' => $dbStats['pending_domains'] ?? 0
+                     ];
+                     
+                     // Convert database format to API format for compatibility
+                     $allDomains = [];
+                     $allDomainsFromDb = $db->getDomains(1, 9999, '', '', 'domain_name', 'ASC'); // Get all for filters
+                     foreach ($allDomainsFromDb as $domain) {
+                         $allDomains[] = [
+                             'id' => $domain['domain_id'],
+                             'domainname' => $domain['domain_name'],
+                             'status' => $domain['status'],
+                             'registrar' => $domain['registrar'],
+                             'expirydate' => $domain['expiry_date'],
+                             'regdate' => $domain['registration_date'],
+                             'nextduedate' => $domain['next_due_date'],
+                             'amount' => $domain['amount'],
+                             'currency' => $domain['currency']
+                         ];
                      }
+                     
+                 } catch (Exception $e) {
+                     // Fallback to empty data if database fails
+                     $domainsForPage = [];
+                     $totalDomains = 0;
+                     $totalPages = 0;
+                     $offset = 0;
+                     $allDomains = [];
+                     $domainStats = [
+                         'total_projects' => 0,
+                         'running_projects' => 0,
+                         'ended_projects' => 0,
+                         'pending_projects' => 0
+                     ];
                  }
                  ?>
 
@@ -1602,39 +1619,62 @@ if (userHasSettings()) {
                          </div>
                      </div>
                      
-                     <?php if (!empty($allDomains)): ?>
+                     <?php if (!empty($domainsForPage)): ?>
                          <div class="overflow-x-auto">
                              <!-- Header -->
                              <div class="grid grid-cols-12 gap-0 bg-gray-50 border-b border-gray-200 sticky top-0 z-10">
-                                 <div class="col-span-5 px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Domain Name</div>
+                                 <div class="col-span-3 px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Domain Name</div>
                                  <div class="col-span-3 px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Registrar</div>
+                                 <div class="col-span-2 px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nameservers</div>
                                  <div class="col-span-2 px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Expiry Date</div>
                                  <div class="col-span-2 px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</div>
                              </div>
                              <!-- Body -->
                              <div id="domainsTableBody" class="bg-white divide-y divide-gray-200">
                                  <?php foreach ($domainsForPage as $domain): ?>
-                                     <div class="grid grid-cols-12 gap-0 hover:bg-gray-50 transition-colors border-b border-gray-200" data-domain="<?= htmlspecialchars(strtolower($domain['domainname'])) ?>" data-registrar="<?= htmlspecialchars(strtolower($domain['registrar'] ?? '')) ?>" data-expiry="<?= htmlspecialchars(strtolower(!empty($domain['expirydate']) ? date('M j, Y', strtotime($domain['expirydate'])) : 'n/a')) ?>" data-status="<?= htmlspecialchars(strtolower($domain['status'] ?? '')) ?>">
-                                         <div class="col-span-5 px-6 py-4 flex items-center">
+                                     <?php
+                                     // Handle both database and API format
+                                     $domainName = $domain['domain_name'] ?? $domain['domainname'] ?? '';
+                                     $registrar = $domain['registrar'] ?? 'Unknown';
+                                     $expiryDate = $domain['expiry_date'] ?? $domain['expirydate'] ?? '';
+                                     $status = $domain['status'] ?? 'Unknown';
+                                     $ns1 = $domain['ns1'] ?? '';
+                                     $ns2 = $domain['ns2'] ?? '';
+                                     $ns3 = $domain['ns3'] ?? '';
+                                     ?>
+                                     <div class="grid grid-cols-12 gap-0 hover:bg-gray-50 transition-colors border-b border-gray-200" data-domain="<?= htmlspecialchars(strtolower($domainName)) ?>" data-registrar="<?= htmlspecialchars(strtolower($registrar)) ?>" data-expiry="<?= htmlspecialchars(strtolower(!empty($expiryDate) ? date('M j, Y', strtotime($expiryDate)) : 'n/a')) ?>" data-status="<?= htmlspecialchars(strtolower($status)) ?>">
+                                         <div class="col-span-3 px-6 py-4 flex items-center">
                                              <div class="w-8 h-8 bg-primary-100 rounded-lg flex items-center justify-center mr-3 flex-shrink-0">
                                                  <i data-lucide="globe" class="w-4 h-4 text-primary-600"></i>
                                              </div>
                                              <div class="min-w-0 flex-1">
-                                                 <div class="text-sm font-medium text-gray-900 truncate"><?= htmlspecialchars($domain['domainname']) ?></div>
+                                                 <div class="text-sm font-medium text-gray-900 truncate"><?= htmlspecialchars($domainName) ?></div>
                                              </div>
                                          </div>
                                          <div class="col-span-3 px-6 py-4 flex items-center">
-                                             <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 truncate">
-                                                 <?= htmlspecialchars($domain['registrar'] ?? 'Unknown') ?>
+                                             <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                                 <?= htmlspecialchars($registrar) ?>
                                              </span>
+                                         </div>
+                                         <div class="col-span-2 px-6 py-4">
+                                             <?php if (!empty($ns1)): ?>
+                                                 <div class="text-xs space-y-0.5">
+                                                     <div class="font-medium text-gray-900 truncate"><?= htmlspecialchars($ns1) ?></div>
+                                                     <?php if (!empty($ns2)): ?>
+                                                         <div class="text-gray-600 truncate"><?= htmlspecialchars($ns2) ?></div>
+                                                     <?php endif; ?>
+                                                 </div>
+                                             <?php else: ?>
+                                                 <span class="text-xs text-gray-400">Not available</span>
+                                             <?php endif; ?>
                                          </div>
                                          <div class="col-span-2 px-6 py-4 flex items-center text-sm text-gray-900">
                                              <?php 
-                                             if (!empty($domain['expirydate'])) {
-                                                 $expiryDate = strtotime($domain['expirydate']);
-                                                 $daysUntilExpiry = ceil(($expiryDate - time()) / (60 * 60 * 24));
+                                             if (!empty($expiryDate)) {
+                                                 $expiryTimestamp = strtotime($expiryDate);
+                                                 $daysUntilExpiry = ceil(($expiryTimestamp - time()) / (60 * 60 * 24));
                                                  $expiryClass = $daysUntilExpiry <= 30 ? 'text-red-600' : ($daysUntilExpiry <= 90 ? 'text-yellow-600' : 'text-gray-900');
-                                                 echo '<span class="' . $expiryClass . '">' . date('M j, Y', $expiryDate) . '</span>';
+                                                 echo '<span class="' . $expiryClass . '">' . date('M j, Y', $expiryTimestamp) . '</span>';
                                              } else {
                                                  echo 'N/A';
                                              }
@@ -1642,7 +1682,6 @@ if (userHasSettings()) {
                                          </div>
                                          <div class="col-span-2 px-6 py-4 flex items-center">
                                              <?php
-                                             $status = $domain['status'] ?? 'Unknown';
                                              $statusColors = [
                                                  'Active' => 'bg-green-100 text-green-800',
                                                  'Pending' => 'bg-yellow-100 text-yellow-800',
@@ -1732,9 +1771,13 @@ if (userHasSettings()) {
                          <?php endif; ?>
                      <?php else: ?>
                          <div class="text-center py-12">
-                             <i data-lucide="globe" class="w-12 h-12 text-gray-400 mx-auto mb-4"></i>
-                             <h3 class="text-lg font-medium text-gray-900 mb-2">No domains found</h3>
-                             <p class="text-gray-500">No domains are currently registered in your WHMCS system.</p>
+                             <i data-lucide="database" class="w-12 h-12 text-gray-400 mx-auto mb-4"></i>
+                             <h3 class="text-lg font-medium text-gray-900 mb-2">No domains in database</h3>
+                             <p class="text-gray-500 mb-4">No domains have been synced to the local database yet. Sync your domains to view them here.</p>
+                             <a href="sync_interface.php" class="btn btn-primary">
+                                 <i data-lucide="refresh-cw" class="w-4 h-4 mr-2"></i>
+                                 Sync Domains Now
+                             </a>
                          </div>
                      <?php endif; ?>
                  </div>
