@@ -121,12 +121,12 @@ function requireAuth() {
                 echo json_encode([
                     'success' => false,
                     'error' => 'Authentication required',
-                    'redirect' => 'auth_page.php'
+                    'redirect' => 'login.php'
                 ]);
                 exit;
             }
             
-            header('Location: auth_page.php');
+            header('Location: login.php');
             exit;
         }
     } catch (Exception $e) {
@@ -145,7 +145,7 @@ function requireAuth() {
         }
         
         // For regular requests, redirect to login
-        header('Location: auth_page.php');
+        header('Location: login.php');
         exit;
     }
 }

@@ -258,12 +258,12 @@ if ($sessionError) {
                     <p class="text-sm text-gray-600">
                         <?php if ($showRegister): ?>
                             Already have an account? 
-                            <a href="auth_page.php" class="font-medium text-primary-600 hover:text-primary-700 hover:underline">
+                            <a href="login.php" class="font-medium text-primary-600 hover:text-primary-700 hover:underline">
                                 Login here
                             </a>
                         <?php else: ?>
                             Don't have an account? 
-                            <a href="auth_page.php?register=1" class="font-medium text-primary-600 hover:text-primary-700 hover:underline">
+                            <a href="login.php?register=1" class="font-medium text-primary-600 hover:text-primary-700 hover:underline">
                                 Sign up
                             </a>
                         <?php endif; ?>
