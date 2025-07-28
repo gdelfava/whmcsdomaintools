@@ -94,7 +94,7 @@ if (isset($_POST['update']) && !empty($_POST['domain']) && is_array($_POST['doma
             <!-- Navigation Bar -->
             <nav class="navbar">
                 <div class="navbar-brand">
-                    <img src="<?= htmlspecialchars(getLogoUrl()) ?>" alt="Logo" onerror="this.src='https://www.fridgehosting.co.za/clientportal/templates/lagom2/assets/img/logo/logo_big.694626433.png'">
+                    <img src="<?= htmlspecialchars(getLogoUrl()) ?>" alt="Logo" onerror="this.style.display='none'">
                     <div>
                         <div class="font-semibold text-gray-900">WHMCS Domain Tools</div>
                         <div class="text-xs text-gray-500">Nameserver Management</div>

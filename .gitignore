@@ -29,4 +29,7 @@ sess_*
 
 # Backup files
 *.bak
-*.backup 
+*.backup
+
+# Environment variables (contains sensitive data)
+.env 

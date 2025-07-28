@@ -22,7 +22,16 @@ A PHP-based web application for managing and updating domain nameservers. This t
 
 2. Configure your web server to point to the project directory
 
-3. Set up the database configuration in `config.php`
+3. Set up environment variables for sensitive configuration:
+   ```bash
+   # Option 1: Use the interactive setup script
+   php setup-env.php
+   
+   # Option 2: Manual setup
+   cp env.example .env
+   # Edit .env with your actual Firebase credentials
+   nano .env
+   ```
 
 4. Ensure PHP 7.4+ is installed with required extensions
 
@@ -56,11 +65,31 @@ domain-updater/
 
 ## Configuration
 
+### Environment Variables
+
+For security, sensitive configuration is stored in environment variables. Create a `.env` file in the project root with the following variables:
+
+```bash
+# Firebase Configuration
+FIREBASE_API_KEY=your_firebase_api_key_here
+FIREBASE_AUTH_DOMAIN=your_project.firebaseapp.com
+FIREBASE_PROJECT_ID=your_project_id
+FIREBASE_STORAGE_BUCKET=your_project.firebasestorage.app
+FIREBASE_MESSAGING_SENDER_ID=your_messaging_sender_id
+FIREBASE_APP_ID=your_app_id_here
+
+# Optional: Encryption key for additional security
+ENCRYPTION_KEY=your_custom_encryption_key_here
+```
+
+**Important**: The `.env` file is automatically ignored by Git to prevent exposing sensitive data.
+
+### Other Configuration
+
 Edit `config.php` to configure:
-- Database settings
-- API credentials
 - Cache settings
 - Logging preferences
+- Other non-sensitive settings
 
 ## Security
 
