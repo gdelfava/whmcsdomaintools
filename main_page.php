@@ -718,7 +718,16 @@ if (userHasSettings()) {
         <div class="flex-1 flex flex-col">
             <!-- Header -->
             <header class="bg-white border-b border-gray-200 px-6 py-4">
-                <div class="flex items-center justify-end">
+                <div class="flex items-center justify-between">
+                    <!-- Logo -->
+                    <div class="flex items-center">
+                        <img src="<?= htmlspecialchars(getLogoUrl()) ?>" 
+                             alt="Logo" 
+                             class="h-8 max-w-full object-contain"
+                             onerror="this.style.display='none';">
+                    </div>
+                    
+                    <!-- User Menu -->
                     <div class="flex items-center space-x-4">
                         <button class="p-2 text-gray-400 hover:text-gray-600 transition-colors">
                             <i data-lucide="mail" class="w-5 h-5"></i>
@@ -754,13 +763,6 @@ if (userHasSettings()) {
                 <!-- Dashboard Content -->
                 <!-- Page Header -->
                 <div class="mb-8">
-                    <!-- Logo -->
-                    <div class="mb-4 flex justify-center">
-                        <img src="<?= htmlspecialchars(getLogoUrl()) ?>" 
-                             alt="Logo" 
-                             class="h-12 max-w-full object-contain"
-                             onerror="this.style.display='none';">
-                    </div>
                     <h1 class="text-2xl font-bold text-gray-900 mb-2">Dashboard</h1>
                     <p class="text-gray-600">Plan, prioritize, and manage your domains with ease.</p>
                 </div>
@@ -1046,13 +1048,6 @@ if (userHasSettings()) {
                  <!-- Billing Content -->
                  <!-- Page Header -->
                  <div class="mb-8">
-                     <!-- Logo -->
-                     <div class="mb-4 flex justify-center">
-                         <img src="<?= htmlspecialchars(getLogoUrl()) ?>" 
-                              alt="Logo" 
-                              class="h-12 max-w-full object-contain"
-                              onerror="this.style.display='none';">
-                     </div>
                      <h1 class="text-2xl font-bold text-gray-900 mb-2">Billing & Revenue</h1>
                      <p class="text-gray-600">Track your income and financial performance.</p>
                  </div>
@@ -1118,13 +1113,6 @@ if (userHasSettings()) {
                  <!-- Orders Content -->
                  <!-- Page Header -->
                  <div class="mb-8">
-                     <!-- Logo -->
-                     <div class="mb-4 flex justify-center">
-                         <img src="<?= htmlspecialchars(getLogoUrl()) ?>" 
-                              alt="Logo" 
-                              class="h-12 max-w-full object-contain"
-                              onerror="this.style.display='none';">
-                     </div>
                      <h1 class="text-2xl font-bold text-gray-900 mb-2">Orders & Sales</h1>
                      <p class="text-gray-600">Track your order volume and sales performance.</p>
                  </div>
@@ -1190,13 +1178,6 @@ if (userHasSettings()) {
                  <!-- Settings Content -->
                  <!-- Page Header -->
                  <div class="mb-8">
-                     <!-- Logo -->
-                     <div class="mb-4 flex justify-center">
-                         <img src="<?= htmlspecialchars(getLogoUrl()) ?>" 
-                              alt="Logo" 
-                              class="h-12 max-w-full object-contain"
-                              onerror="this.style.display='none';">
-                     </div>
                      <h1 class="text-2xl font-bold text-gray-900 mb-2">API Settings</h1>
                      <p class="text-gray-600">Configure your WHMCS API credentials and default nameserver settings.</p>
                  </div>
@@ -1426,13 +1407,6 @@ if (userHasSettings()) {
                  <!-- Domains Content -->
                  <!-- Page Header -->
                  <div class="mb-8">
-                     <!-- Logo -->
-                     <div class="mb-4 flex justify-center">
-                         <img src="<?= htmlspecialchars(getLogoUrl()) ?>" 
-                              alt="Logo" 
-                              class="h-12 max-w-full object-contain"
-                              onerror="this.style.display='none';">
-                     </div>
                      <h1 class="text-2xl font-bold text-gray-900 mb-2">Domains</h1>
                      <p class="text-gray-600">View and manage all your registered domains.</p>
                  </div>
@@ -1769,13 +1743,6 @@ if (userHasSettings()) {
                  <!-- Nameservers Content -->
                  <!-- Page Header -->
                  <div class="mb-8">
-                     <!-- Logo -->
-                     <div class="mb-4 flex justify-center">
-                         <img src="<?= htmlspecialchars(getLogoUrl()) ?>" 
-                              alt="Logo" 
-                              class="h-12 max-w-full object-contain"
-                              onerror="this.style.display='none';">
-                     </div>
                      <h1 class="text-2xl font-bold text-gray-900 mb-2">Update Nameservers</h1>
                      <p class="text-gray-600">Batch update nameservers for multiple domains simultaneously.</p>
                                 </div>
@@ -1963,13 +1930,6 @@ if (userHasSettings()) {
                  <!-- Export Content -->
                  <!-- Page Header -->
                  <div class="mb-8">
-                     <!-- Logo -->
-                     <div class="mb-4 flex justify-center">
-                         <img src="<?= htmlspecialchars(getLogoUrl()) ?>" 
-                              alt="Logo" 
-                              class="h-12 max-w-full object-contain"
-                              onerror="this.style.display='none';">
-                     </div>
                      <h1 class="text-2xl font-bold text-gray-900 mb-2">Export Domain Data</h1>
                      <p class="text-gray-600">Export your domain information to CSV format for analysis and reporting.</p>
                  </div>

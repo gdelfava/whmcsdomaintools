@@ -111,13 +111,6 @@ if ($sessionError) {
             <div class="p-8">
                 <!-- App Header -->
                 <div class="text-center mb-8">
-                    <!-- Logo -->
-                    <div class="mb-4 flex justify-center">
-                        <img src="<?= htmlspecialchars(getLogoUrl()) ?>" 
-                             alt="Logo" 
-                             class="h-12 max-w-full object-contain"
-                             onerror="this.style.display='none';">
-                    </div>
                     <h2 class="text-2xl font-bold text-gray-900 mb-2">
                         <?= $showRegister ? 'Create Account' : 'Welcome Back' ?>
                     </h2>
