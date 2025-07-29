@@ -1427,19 +1427,38 @@ if (userHasSettings()) {
                  </div>
 
                  <?php
-                 // Initialize database for domains view
-                 try {
-                     $db = Database::getInstance();
-                     
-                     // Pagination logic
-                     $domainsPerPage = 25; // Number of domains per page
-                     $currentPage = isset($_GET['page']) ? max(1, intval($_GET['page'])) : 1;
-                     
-                     // Get domains from database
-                     $domainsForPage = $db->getDomains($currentPage, $domainsPerPage, '', '', 'domain_name', 'ASC');
-                     $totalDomains = $db->getDomainCount('', '');
-                     $totalPages = ceil($totalDomains / $domainsPerPage);
-                     $offset = ($currentPage - 1) * $domainsPerPage;
+                                  // Initialize database for domains view
+                try {
+                    $db = Database::getInstance();
+                    
+                    // Get search and filter parameters from URL
+                    $searchTerm = isset($_GET['search']) ? trim($_GET['search']) : '';
+                    $statusFilter = isset($_GET['status']) ? $_GET['status'] : '';
+                    $registrarFilter = isset($_GET['registrar']) ? $_GET['registrar'] : '';
+                    
+                    // Helper function to build query string
+                    function buildQueryString($page = null, $search = null, $status = null, $registrar = null) {
+                        global $searchTerm, $statusFilter, $registrarFilter, $currentPage;
+                        $params = ['view' => 'domains'];
+                        if ($page !== null) $params['page'] = $page;
+                        if ($search !== null) $params['search'] = $search;
+                        elseif (!empty($searchTerm)) $params['search'] = $searchTerm;
+                        if ($status !== null) $params['status'] = $status;
+                        elseif (!empty($statusFilter)) $params['status'] = $statusFilter;
+                        if ($registrar !== null) $params['registrar'] = $registrar;
+                        elseif (!empty($registrarFilter)) $params['registrar'] = $registrarFilter;
+                        return '?' . http_build_query($params);
+                    }
+                    
+                    // Pagination logic
+                    $domainsPerPage = 25; // Number of domains per page
+                    $currentPage = isset($_GET['page']) ? max(1, intval($_GET['page'])) : 1;
+                    
+                    // Get domains from database with search and filters
+                    $domainsForPage = $db->getDomains($currentPage, $domainsPerPage, $searchTerm, $statusFilter, 'domain_name', 'ASC', $registrarFilter);
+                    $totalDomains = $db->getDomainCount($searchTerm, $statusFilter, $registrarFilter);
+                    $totalPages = ceil($totalDomains / $domainsPerPage);
+                    $offset = ($currentPage - 1) * $domainsPerPage;
                      
                      // Get domain statistics from database
                      $dbStats = $db->getDomainStats();
@@ -1450,9 +1469,9 @@ if (userHasSettings()) {
                          'pending_projects' => $dbStats['pending_domains'] ?? 0
                      ];
                      
-                     // Convert database format to API format for compatibility
-                     $allDomains = [];
-                     $allDomainsFromDb = $db->getDomains(1, 9999, '', '', 'domain_name', 'ASC'); // Get all for filters
+                                         // Convert database format to API format for compatibility
+                    $allDomains = [];
+                    $allDomainsFromDb = $db->getDomains(1, 9999, '', '', 'domain_name', 'ASC', ''); // Get all for filters
                      foreach ($allDomainsFromDb as $domain) {
                          $allDomains[] = [
                              'id' => $domain['domain_id'],
@@ -1547,76 +1566,74 @@ if (userHasSettings()) {
                  <!-- Domains Table -->
                  <div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
                      <div class="px-6 py-4 border-b border-gray-200">
-                         <div class="flex items-center justify-between mb-4">
-                             <h3 class="text-lg font-semibold text-gray-900">All Domains</h3>
-                             <div class="flex items-center space-x-4">
-                                 <!-- Search Field -->
-                                 <div class="relative">
-                                     <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                                         <i data-lucide="search" class="w-4 h-4 text-gray-400"></i>
+                         <!-- Search and Filters Form -->
+                         <form method="GET" id="domainSearchForm">
+                             <input type="hidden" name="view" value="domains">
+                             
+                             <div class="flex items-center justify-between mb-4">
+                                 <h3 class="text-lg font-semibold text-gray-900">All Domains</h3>
+                                 <div class="flex items-center space-x-4">
+                                     <!-- Search Field -->
+                                     <div class="relative">
+                                         <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                             <i data-lucide="search" class="w-4 h-4 text-gray-400"></i>
+                                         </div>
+                                         <input 
+                                             type="text" 
+                                             name="search"
+                                             id="domainSearch" 
+                                             placeholder="Search domains..." 
+                                             value="<?= htmlspecialchars($searchTerm) ?>"
+                                             class="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent text-sm w-64"
+                                         >
                                      </div>
-                                     <input 
-                                         type="text" 
-                                         id="domainSearch" 
-                                         placeholder="Search domains..." 
-                                         class="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent text-sm w-64"
-                                     >
+                                     <button type="submit" class="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors text-sm">
+                                         Search
+                                     </button>
+                                     <span class="text-sm text-gray-500" id="domainCount"><?= $totalDomains ?> domains</span>
                                  </div>
-                                 <span class="text-sm text-gray-500" id="domainCount"><?= $totalDomains ?> domains</span>
-                             </div>
-                         </div>
-                         
-                         <!-- Filters -->
-                         <div class="flex items-center space-x-4">
-                             <div class="text-sm font-medium text-gray-700">Filters:</div>
-                             
-                             <!-- Registrar Filter -->
-                             <div class="relative">
-                                 <select id="registrarFilter" class="text-sm border border-gray-300 rounded-lg px-3 py-1.5 pr-8 focus:ring-2 focus:ring-primary-500 focus:border-transparent bg-white">
-                                     <option value="">All Registrars</option>
-                                     <?php
-                                     $registrars = array_unique(array_map(function($domain) {
-                                         return $domain['registrar'] ?? 'Unknown';
-                                     }, $allDomains));
-                                     sort($registrars);
-                                     foreach ($registrars as $registrar): ?>
-                                         <option value="<?= htmlspecialchars(strtolower($registrar)) ?>"><?= htmlspecialchars($registrar) ?></option>
-                                     <?php endforeach; ?>
-                                 </select>
                              </div>
                              
-                             <!-- Expiry Filter -->
-                             <div class="relative">
-                                 <select id="expiryFilter" class="text-sm border border-gray-300 rounded-lg px-3 py-1.5 pr-8 focus:ring-2 focus:ring-primary-500 focus:border-transparent bg-white">
-                                     <option value="">All Expiry Dates</option>
-                                     <option value="expired">Expired</option>
-                                     <option value="30days">Expiring in 30 days</option>
-                                     <option value="90days">Expiring in 90 days</option>
-                                     <option value="thisyear">Expiring this year</option>
-                                     <option value="nextyear">Expiring next year</option>
-                                 </select>
-                             </div>
+                             <!-- Filters -->
+                             <div class="flex items-center space-x-4 mb-4">
+                                 <div class="text-sm font-medium text-gray-700">Filters:</div>
                              
-                             <!-- Status Filter -->
-                             <div class="relative">
-                                 <select id="statusFilter" class="text-sm border border-gray-300 rounded-lg px-3 py-1.5 pr-8 focus:ring-2 focus:ring-primary-500 focus:border-transparent bg-white">
-                                     <option value="">All Statuses</option>
-                                     <?php
-                                     $statuses = array_unique(array_map(function($domain) {
-                                         return $domain['status'] ?? 'Unknown';
-                                     }, $allDomains));
-                                     sort($statuses);
-                                     foreach ($statuses as $status): ?>
-                                         <option value="<?= htmlspecialchars(strtolower($status)) ?>"><?= htmlspecialchars($status) ?></option>
-                                     <?php endforeach; ?>
-                                 </select>
+                                 <!-- Registrar Filter -->
+                                 <div class="relative">
+                                     <select name="registrar" id="registrarFilter" onchange="this.form.submit()" class="text-sm border border-gray-300 rounded-lg px-3 py-1.5 pr-8 focus:ring-2 focus:ring-primary-500 focus:border-transparent bg-white">
+                                         <option value=""<?= (empty($registrarFilter) || $registrarFilter === '') ? ' selected' : '' ?>>All Registrars</option>
+                                         <?php
+                                         $registrars = array_unique(array_map(function($domain) {
+                                             return $domain['registrar'] ?? 'Unknown';
+                                         }, $allDomainsFromDb));
+                                         sort($registrars);
+                                         foreach ($registrars as $registrar): ?>
+                                             <option value="<?= htmlspecialchars($registrar) ?>"<?= ($registrarFilter === $registrar) ? ' selected' : '' ?>><?= htmlspecialchars($registrar) ?></option>
+                                         <?php endforeach; ?>
+                                     </select>
+                                 </div>
+                                 
+                                 <!-- Status Filter -->
+                                 <div class="relative">
+                                     <select name="status" id="statusFilter" onchange="this.form.submit()" class="text-sm border border-gray-300 rounded-lg px-3 py-1.5 pr-8 focus:ring-2 focus:ring-primary-500 focus:border-transparent bg-white">
+                                         <option value="" <?= empty($statusFilter) ? 'selected' : '' ?>>All Statuses</option>
+                                         <?php
+                                         $statuses = array_unique(array_map(function($domain) {
+                                             return $domain['status'] ?? 'Unknown';
+                                         }, $allDomainsFromDb));
+                                         sort($statuses);
+                                         foreach ($statuses as $status): ?>
+                                             <option value="<?= htmlspecialchars($status) ?>" <?= $statusFilter === $status ? 'selected' : '' ?>><?= htmlspecialchars($status) ?></option>
+                                         <?php endforeach; ?>
+                                     </select>
+                                 </div>
+                                 
+                                 <!-- Clear Filters -->
+                                 <a href="?view=domains" class="text-sm text-primary-600 hover:text-primary-700 font-medium px-3 py-1.5 border border-primary-200 rounded-lg hover:bg-primary-50 transition-colors">
+                                     Clear Filters
+                                 </a>
                              </div>
-                             
-                             <!-- Clear Filters -->
-                             <button id="clearFilters" class="text-sm text-primary-600 hover:text-primary-700 font-medium px-3 py-1.5 border border-primary-200 rounded-lg hover:bg-primary-50 transition-colors">
-                                 Clear Filters
-                             </button>
-                         </div>
+                         </form>
                      </div>
                      
                      <?php if (!empty($domainsForPage)): ?>
@@ -1711,7 +1728,7 @@ if (userHasSettings()) {
                                      <div class="flex items-center space-x-2">
                                          <!-- Previous Page -->
                                          <?php if ($currentPage > 1): ?>
-                                             <a href="?view=domains&page=<?= $currentPage - 1 ?>" class="px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 hover:text-gray-700 transition-colors">
+                                             <a href="<?= buildQueryString($currentPage - 1) ?>" class="px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 hover:text-gray-700 transition-colors">
                                                  Previous
                                              </a>
                                          <?php else: ?>
@@ -1726,7 +1743,7 @@ if (userHasSettings()) {
                                          $endPage = min($totalPages, $currentPage + 2);
                                          
                                          if ($startPage > 1): ?>
-                                             <a href="?view=domains&page=1" class="px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 hover:text-gray-700 transition-colors">
+                                             <a href="<?= buildQueryString(1) ?>" class="px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 hover:text-gray-700 transition-colors">
                                                  1
                                              </a>
                                              <?php if ($startPage > 2): ?>
@@ -1740,7 +1757,7 @@ if (userHasSettings()) {
                                                      <?= $i ?>
                                                  </span>
                                              <?php else: ?>
-                                                 <a href="?view=domains&page=<?= $i ?>" class="px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 hover:text-gray-700 transition-colors">
+                                                 <a href="<?= buildQueryString($i) ?>" class="px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 hover:text-gray-700 transition-colors">
                                                      <?= $i ?>
                                                  </a>
                                              <?php endif; ?>
@@ -1750,14 +1767,14 @@ if (userHasSettings()) {
                                              <?php if ($endPage < $totalPages - 1): ?>
                                                  <span class="px-3 py-2 text-sm text-gray-500">...</span>
                                              <?php endif; ?>
-                                             <a href="?view=domains&page=<?= $totalPages ?>" class="px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 hover:text-gray-700 transition-colors">
+                                             <a href="<?= buildQueryString($totalPages) ?>" class="px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 hover:text-gray-700 transition-colors">
                                                  <?= $totalPages ?>
                                              </a>
                                          <?php endif; ?>
                                          
                                          <!-- Next Page -->
                                          <?php if ($currentPage < $totalPages): ?>
-                                             <a href="?view=domains&page=<?= $currentPage + 1 ?>" class="px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 hover:text-gray-700 transition-colors">
+                                             <a href="<?= buildQueryString($currentPage + 1) ?>" class="px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 hover:text-gray-700 transition-colors">
                                                  Next
                                              </a>
                                          <?php else: ?>
@@ -2133,157 +2150,75 @@ if (userHasSettings()) {
          </div>
      </div>
 
+    <?php if ($currentView !== 'domains'): ?>
     <script src="js/dashboard.js"></script>
+    <?php endif; ?>
     <script>
         // Initialize Lucide icons
         lucide.createIcons();
 
-        // Domain search and filter functionality
+                // Search now uses server-side filtering via form submission
+        console.log('Domain search and filters are now server-side powered');
+        
+        // Prevent any form hijacking on domains page
+        <?php if ($currentView === 'domains'): ?>
         document.addEventListener('DOMContentLoaded', function() {
-            console.log('DOM loaded, initializing filters...');
-            
-            const searchInput = document.getElementById('domainSearch');
-            const registrarFilter = document.getElementById('registrarFilter');
-            const expiryFilter = document.getElementById('expiryFilter');
-            const statusFilter = document.getElementById('statusFilter');
-            const clearFiltersBtn = document.getElementById('clearFilters');
-            const domainsTableBody = document.getElementById('domainsTableBody');
-            const domainCount = document.getElementById('domainCount');
-            
-            console.log('Elements found:', {
-                searchInput: !!searchInput,
-                registrarFilter: !!registrarFilter,
-                expiryFilter: !!expiryFilter,
-                statusFilter: !!statusFilter,
-                clearFiltersBtn: !!clearFiltersBtn,
-                domainsTableBody: !!domainsTableBody,
-                domainCount: !!domainCount
-            });
-            
-            if (domainsTableBody) {
-                const domainRows = domainsTableBody.querySelectorAll('[data-domain]');
-                const totalCount = domainRows.length;
+            // Disable any existing event listeners on the search form
+            const searchForm = document.getElementById('domainSearchForm');
+            if (searchForm) {
+                // Store current values before cloning
+                const registrarValue = document.getElementById('registrarFilter')?.value || '';
+                const statusValue = document.getElementById('statusFilter')?.value || '';
+                const searchValue = document.getElementById('domainSearch')?.value || '';
                 
-                console.log('Found', totalCount, 'domain rows');
+                // Clone the form to remove all event listeners
+                const newForm = searchForm.cloneNode(true);
+                searchForm.parentNode.replaceChild(newForm, searchForm);
+                console.log('Cleaned search form from event listeners');
                 
-                // Debug: Log first few domain rows
-                if (domainRows.length > 0) {
-                    console.log('First domain row data attributes:', {
-                        domain: domainRows[0].getAttribute('data-domain'),
-                        registrar: domainRows[0].getAttribute('data-registrar'),
-                        expiry: domainRows[0].getAttribute('data-expiry'),
-                        status: domainRows[0].getAttribute('data-status')
-                    });
-                }
+                // Restore values and selections
+                const newRegistrarFilter = document.getElementById('registrarFilter');
+                const newStatusFilter = document.getElementById('statusFilter');
+                const newSearchInput = document.getElementById('domainSearch');
                 
-                // Function to check if domain matches expiry filter
-                function matchesExpiryFilter(expiryDateStr, filterValue) {
-                    if (!filterValue || !expiryDateStr || expiryDateStr === 'n/a') return true;
-                    
-                    const expiryDate = new Date(expiryDateStr);
-                    const today = new Date();
-                    const daysUntilExpiry = Math.ceil((expiryDate - today) / (1000 * 60 * 60 * 24));
-                    
-                    switch(filterValue) {
-                        case 'expired':
-                            return daysUntilExpiry < 0;
-                        case '30days':
-                            return daysUntilExpiry >= 0 && daysUntilExpiry <= 30;
-                        case '90days':
-                            return daysUntilExpiry >= 0 && daysUntilExpiry <= 90;
-                        case 'thisyear':
-                            return expiryDate.getFullYear() === today.getFullYear();
-                        case 'nextyear':
-                            return expiryDate.getFullYear() === today.getFullYear() + 1;
-                        default:
-                            return true;
+                if (newRegistrarFilter) {
+                    newRegistrarFilter.value = registrarValue;
+                    // Force "All Registrars" selection if value is empty
+                    if (!registrarValue) {
+                        newRegistrarFilter.selectedIndex = 0;
                     }
+                    newRegistrarFilter.addEventListener('change', function() {
+                        this.form.submit();
+                    });
                 }
                 
-                // Function to apply all filters
-                function applyFilters() {
-                    const searchTerm = searchInput ? searchInput.value.toLowerCase().trim() : '';
-                    const registrarValue = registrarFilter ? registrarFilter.value : '';
-                    const expiryValue = expiryFilter ? expiryFilter.value : '';
-                    const statusValue = statusFilter ? statusFilter.value : '';
-                    
-                    console.log('Applying filters:', {
-                        searchTerm,
-                        registrarValue,
-                        expiryValue,
-                        statusValue
-                    });
-                    
-                    let visibleCount = 0;
-                    
-                    domainRows.forEach(function(row) {
-                        const domainName = row.getAttribute('data-domain') || '';
-                        const registrar = row.getAttribute('data-registrar') || '';
-                        const expiryDate = row.getAttribute('data-expiry') || '';
-                        const status = row.getAttribute('data-status') || '';
-                        
-                        // Check search term
-                        const matchesSearch = searchTerm === '' || 
-                                            domainName.includes(searchTerm) || 
-                                            registrar.includes(searchTerm) || 
-                                            expiryDate.includes(searchTerm) || 
-                                            status.includes(searchTerm);
-                        
-                        // Check registrar filter
-                        const matchesRegistrar = registrarValue === '' || registrar === registrarValue;
-                        
-                        // Check expiry filter
-                        const matchesExpiry = matchesExpiryFilter(expiryDate, expiryValue);
-                        
-                        // Check status filter
-                        const matchesStatus = statusValue === '' || status === statusValue;
-                        
-                        // Show row only if all conditions match
-                        const shouldShow = matchesSearch && matchesRegistrar && matchesExpiry && matchesStatus;
-                        
-                        if (shouldShow) {
-                            row.style.display = 'grid';
-                            visibleCount++;
-                        } else {
-                            row.style.display = 'none';
-                        }
-                    });
-                    
-                    // Update domain count
-                    if (domainCount) {
-                        const hasActiveFilters = searchTerm !== '' || registrarValue !== '' || expiryValue !== '' || statusValue !== '';
-                        if (hasActiveFilters) {
-                            domainCount.textContent = visibleCount + ' of ' + totalCount + ' domains';
-                        } else {
-                            domainCount.textContent = totalCount + ' domains';
-                        }
+                if (newStatusFilter) {
+                    newStatusFilter.value = statusValue;
+                    // Force "All Statuses" selection if value is empty
+                    if (!statusValue) {
+                        newStatusFilter.selectedIndex = 0;
                     }
-                }
-                
-                // Add event listeners
-                if (searchInput) {
-                    searchInput.addEventListener('input', applyFilters);
-                }
-                if (registrarFilter) {
-                    registrarFilter.addEventListener('change', applyFilters);
-                }
-                if (expiryFilter) {
-                    expiryFilter.addEventListener('change', applyFilters);
-                }
-                if (statusFilter) {
-                    statusFilter.addEventListener('change', applyFilters);
-                }
-                if (clearFiltersBtn) {
-                    clearFiltersBtn.addEventListener('click', function() {
-                        if (searchInput) searchInput.value = '';
-                        if (registrarFilter) registrarFilter.value = '';
-                        if (expiryFilter) expiryFilter.value = '';
-                        if (statusFilter) statusFilter.value = '';
-                        applyFilters();
+                    newStatusFilter.addEventListener('change', function() {
+                        this.form.submit();
                     });
                 }
+                
+                if (newSearchInput) {
+                    newSearchInput.value = searchValue;
+                }
+                
+                console.log('Re-added filter auto-submit functionality and restored selections');
             }
+            
+            // Remove any opacity or overlay effects that might be applied
+            const allElements = document.querySelectorAll('*');
+            allElements.forEach(el => {
+                if (el.style.opacity && el.style.opacity !== '1') {
+                    el.style.opacity = '1';
+                }
+            });
         });
+        <?php endif; ?>
     </script>
     
     <!-- Cache Modal Script -->

@@ -160,6 +160,7 @@ function getDomainNameservers($url, $identifier, $secret, $domainId) {
 }
 
 function getDomainsForExport($url, $identifier, $secret, $batchSize, $offset) {
+    // Use proper WHMCS pagination with limitstart and limitnum
     return curlCall($url, [
         'action' => 'GetClientsDomains',
         'identifier' => $identifier,
@@ -168,6 +169,19 @@ function getDomainsForExport($url, $identifier, $secret, $batchSize, $offset) {
         'limitnum' => $batchSize,
         'responsetype' => 'json'
     ]);
+}
+
+function getTotalDomainCount($url, $identifier, $secret) {
+    // Get total count without fetching all domains
+    $response = curlCall($url, [
+        'action' => 'GetClientsDomains',
+        'identifier' => $identifier,
+        'secret' => $secret,
+        'limitnum' => 1, // Just get 1 domain to see total
+        'responsetype' => 'json'
+    ]);
+    
+    return $response['totalresults'] ?? 0;
 }
 
 function testApiConnection($url, $identifier, $secret) {

@@ -74,6 +74,15 @@ const initializeSidebar = () => {
 
 // Search functionality
 const initializeSearch = () => {
+    // Check if we're on the domains page (server-side search)
+    const isDomainPage = window.location.search.includes('view=domains') || 
+                        document.getElementById('domainSearchForm');
+    
+    if (isDomainPage) {
+        console.log('Skipping client-side search - domains page uses server-side search');
+        return;
+    }
+    
     const searchInput = document.querySelector('input[placeholder="Search domains..."]');
     if (!searchInput) return;
     
