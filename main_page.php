@@ -671,9 +671,21 @@ if (userHasSettings()) {
                                     <span class="text-sm <?= $currentView === 'domains' ? 'font-semibold text-gray-900' : 'font-normal' ?>">Domains</span>
                                 </a>
                             </li>
+                        </ul>
+                    </div>
+
+                    <div class="mb-6">
+                        <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">DOMAIN ACTIONS</h3>
+                        <ul class="space-y-1">
+                            <li>
+                                <a href="sync_interface.php" class="flex items-center space-x-3 px-3 py-2 text-gray-500 hover:bg-gray-50 rounded-lg transition-colors">
+                                    <i data-lucide="refresh-cw" class="w-4 h-4 text-gray-400"></i>
+                                    <span class="text-sm font-normal">Domain Sync</span>
+                                </a>
+                            </li>
                             <li>
                                 <a href="?view=nameservers" class="flex items-center space-x-3 px-3 py-2 <?= $currentView === 'nameservers' ? 'bg-primary-50 text-primary-700 rounded-lg border-l-4 border-primary-600' : 'text-gray-500 hover:bg-gray-50 rounded-lg transition-colors' ?>">
-                                    <i data-lucide="refresh-cw" class="w-4 h-4 <?= $currentView === 'nameservers' ? 'text-primary-600' : 'text-gray-400' ?>"></i>
+                                    <i data-lucide="server" class="w-4 h-4 <?= $currentView === 'nameservers' ? 'text-primary-600' : 'text-gray-400' ?>"></i>
                                     <span class="text-sm <?= $currentView === 'nameservers' ? 'font-semibold text-gray-900' : 'font-normal' ?>">Update Nameservers</span>
                                 </a>
                             </li>
@@ -1413,16 +1425,7 @@ if (userHasSettings()) {
                              <h1 class="text-2xl font-bold text-gray-900 mb-2">Domains</h1>
                              <p class="text-gray-600">View and manage all your registered domains from local database.</p>
                          </div>
-                         <div class="flex items-center space-x-4">
-                             <a href="domains_db.php" class="btn btn-secondary">
-                                 <i data-lucide="database" class="w-4 h-4 mr-2"></i>
-                                 Database View
-                             </a>
-                             <a href="sync_interface.php" class="btn btn-primary">
-                                 <i data-lucide="refresh-cw" class="w-4 h-4 mr-2"></i>
-                                 Sync Now
-                             </a>
-                         </div>
+
                      </div>
                  </div>
 

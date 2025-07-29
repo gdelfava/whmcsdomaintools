@@ -55,48 +55,202 @@ if (!isset($error)) {
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="css/main.css">
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Sora', 'sans-serif'],
+                    },
+                    colors: {
+                        primary: {
+                            50: '#f0fdf4',
+                            100: '#dcfce7',
+                            200: '#bbf7d0',
+                            300: '#86efac',
+                            400: '#4ade80',
+                            500: '#22c55e',
+                            600: '#16a34a',
+                            700: '#15803d',
+                            800: '#166534',
+                            900: '#14532d',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
 </head>
-<body>
-    <div class="page-wrapper">
-        <div class="container">
-            <!-- Navigation Bar -->
-            <nav class="navbar">
-                <div class="navbar-brand">
-                    <img src="<?= htmlspecialchars(getLogoUrl()) ?>" alt="Logo" onerror="this.style.display='none'">
+<body class="bg-gray-50 font-sans">
+    <div class="flex h-screen">
+        <!-- Mobile overlay -->
+        <div class="lg:hidden fixed inset-0 bg-black bg-opacity-50 z-30 hidden" id="sidebar-overlay"></div>
+        
+        <!-- Sidebar -->
+        <div class="w-64 bg-white border-r border-gray-200 flex flex-col lg:translate-x-0 -translate-x-full transition-transform duration-300 fixed lg:relative z-40 h-full">
+            <!-- Logo -->
+            <div class="p-6 border-b border-gray-200">
+                <div class="flex items-center space-x-3">
+                    <div class="w-8 h-8 bg-primary-600 rounded-lg flex items-center justify-center">
+                        <i data-lucide="globe" class="w-5 h-5 text-white"></i>
+                    </div>
                     <div>
-                        <div class="font-semibold text-gray-900">WHMCS Domain Tools</div>
-                        <div class="text-xs text-gray-500">Sync Interface</div>
+                        <h1 class="text-lg font-bold text-gray-900">Domain Tools</h1>
+                        <p class="text-xs text-gray-500">Management Suite</p>
                     </div>
                 </div>
-                <div class="navbar-user">
-                    <span>Logged in as <span class="user-email"><?= htmlspecialchars($_SESSION['user_email'] ?? 'User') ?></span></span>
-                    <form method="POST" style="margin:0;">
-                        <button type="submit" name="logout" class="logout-btn">Logout</button>
-                    </form>
-                </div>
-            </nav>
+            </div>
 
-            <!-- Breadcrumb -->
-            <nav class="breadcrumb">
-                <a href="main_page.php">Dashboard</a>
-                <span class="breadcrumb-separator">/</span>
-                <span>Sync Interface</span>
-            </nav>
+            <!-- Navigation Menu -->
+            <nav class="flex-1 p-4 flex flex-col">
+                <div class="flex-1">
+                    <div class="mb-6">
+                        <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">MENU</h3>
+                        <ul class="space-y-1">
+                            <li>
+                                <a href="main_page.php?view=dashboard" class="flex items-center space-x-3 px-3 py-2 text-gray-500 hover:bg-gray-50 rounded-lg transition-colors">
+                                    <i data-lucide="layout-dashboard" class="w-4 h-4 text-gray-400"></i>
+                                    <span class="text-sm font-normal">Dashboard</span>
+                                </a>
+                            </li>
+                            <li>
+                                <a href="main_page.php?view=billing" class="flex items-center space-x-3 px-3 py-2 text-gray-500 hover:bg-gray-50 rounded-lg transition-colors">
+                                    <i data-lucide="credit-card" class="w-4 h-4 text-gray-400"></i>
+                                    <span class="text-sm font-normal">Billing</span>
+                                </a>
+                            </li>
+                            <li>
+                                <a href="main_page.php?view=orders" class="flex items-center space-x-3 px-3 py-2 text-gray-500 hover:bg-gray-50 rounded-lg transition-colors">
+                                    <i data-lucide="shopping-cart" class="w-4 h-4 text-gray-400"></i>
+                                    <span class="text-sm font-normal">Orders</span>
+                                </a>
+                            </li>
+                            <li>
+                                <a href="main_page.php?view=domains" class="flex items-center space-x-3 px-3 py-2 text-gray-500 hover:bg-gray-50 rounded-lg transition-colors">
+                                    <i data-lucide="globe" class="w-4 h-4 text-gray-400"></i>
+                                    <span class="text-sm font-normal">Domains</span>
+                                </a>
+                            </li>
+                        </ul>
+                    </div>
 
-            <!-- Main Card -->
-            <div class="main-card">
-                <!-- Card Header -->
-                <div class="card-header">
-                    <div class="card-header-content">
-                        <h1 class="page-title">🔄 Domain Sync Interface</h1>
-                        <p class="page-subtitle">Sync domain data from WHMCS API to local database</p>
+                    <div class="mb-6">
+                        <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">DOMAIN ACTIONS</h3>
+                        <ul class="space-y-1">
+                            <li>
+                                <a href="sync_interface.php" class="flex items-center space-x-3 px-3 py-2 bg-primary-50 text-primary-700 rounded-lg border-l-4 border-primary-600">
+                                    <i data-lucide="refresh-cw" class="w-4 h-4 text-primary-600"></i>
+                                    <span class="text-sm font-semibold text-gray-900">Domain Sync</span>
+                                </a>
+                            </li>
+                            <li>
+                                <a href="main_page.php?view=nameservers" class="flex items-center space-x-3 px-3 py-2 text-gray-500 hover:bg-gray-50 rounded-lg transition-colors">
+                                    <i data-lucide="server" class="w-4 h-4 text-gray-400"></i>
+                                    <span class="text-sm font-normal">Update Nameservers</span>
+                                </a>
+                            </li>
+                            <li>
+                                <a href="main_page.php?view=export" class="flex items-center space-x-3 px-3 py-2 text-gray-500 hover:bg-gray-50 rounded-lg transition-colors">
+                                    <i data-lucide="download" class="w-4 h-4 text-gray-400"></i>
+                                    <span class="text-sm font-normal">Export Domains</span>
+                                </a>
+                            </li>
+                        </ul>
                     </div>
                 </div>
 
-                <!-- Card Body -->
-                <div class="card-body">
+                <div class="mt-auto">
+                    <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">GENERAL</h3>
+                    <ul class="space-y-1">
+                        <li>
+                            <a href="main_page.php?view=settings" class="flex items-center space-x-3 px-3 py-2 text-gray-500 hover:bg-gray-50 rounded-lg transition-colors">
+                                <i data-lucide="settings" class="w-4 h-4 text-gray-400"></i>
+                                <span class="text-sm font-normal">Settings</span>
+                            </a>
+                        </li>
+                        <li>
+                            <a href="#" class="flex items-center space-x-3 px-3 py-2 text-gray-500 hover:bg-gray-50 rounded-lg transition-colors">
+                                <i data-lucide="help-circle" class="w-4 h-4 text-gray-400"></i>
+                                <span class="text-sm font-normal">Help</span>
+                            </a>
+                        </li>
+                        <li>
+                            <form method="POST" class="w-full">
+                                <button type="submit" name="logout" class="flex items-center space-x-3 px-3 py-2 text-gray-500 hover:bg-gray-50 rounded-lg transition-colors w-full text-left">
+                                    <i data-lucide="log-out" class="w-4 h-4 text-gray-400"></i>
+                                    <span class="text-sm font-normal">Logout</span>
+                                </button>
+                            </form>
+                        </li>
+                    </ul>
+                </div>
+            </nav>
+        </div>
+
+        <!-- Main Content -->
+        <div class="flex-1 flex flex-col">
+            <!-- Header -->
+            <header class="bg-white border-b border-gray-200 px-6 py-4">
+                <div class="flex items-center justify-between">
+                    <!-- Logo -->
+                    <div class="flex items-center">
+                        <button class="lg:hidden mr-4 text-gray-500" id="sidebar-toggle">
+                            <i data-lucide="menu" class="w-6 h-6"></i>
+                        </button>
+                        <img src="<?= htmlspecialchars(getLogoUrl()) ?>" 
+                             alt="Logo" 
+                             class="h-8 max-w-full object-contain"
+                             onerror="this.style.display='none';">
+                    </div>
+                    
+                    <!-- User Menu -->
+                    <div class="flex items-center space-x-4">
+                        <button class="p-2 text-gray-400 hover:text-gray-600 transition-colors">
+                            <i data-lucide="mail" class="w-5 h-5"></i>
+                        </button>
+                        <button class="p-2 text-gray-400 hover:text-gray-600 transition-colors">
+                            <i data-lucide="bell" class="w-5 h-5"></i>
+                        </button>
+                        <div class="flex items-center space-x-3">
+                            <?php
+                            $userEmail = $_SESSION['user_email'] ?? '';
+                            $gravatarHash = md5(strtolower(trim($userEmail)));
+                            $gravatarUrl = "https://www.gravatar.com/avatar/{$gravatarHash}?s=32&d=mp&r=g";
+                            ?>
+                            <img src="<?= htmlspecialchars($gravatarUrl) ?>" 
+                                 alt="User Avatar" 
+                                 class="w-8 h-8 rounded-full object-cover border-2 border-gray-200"
+                                 onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                            <div class="w-8 h-8 bg-primary-600 rounded-full flex items-center justify-center hidden">
+                                <span class="text-white font-medium text-sm">
+                                    <?= !empty($userEmail) ? strtoupper(substr($userEmail, 0, 1)) : 'U' ?>
+                                </span>
+                            </div>
+                            <div class="flex flex-col">
+                                <span class="text-sm font-semibold text-gray-900"><?= htmlspecialchars($userEmail) ?></span>
+                                <span class="text-xs text-gray-500">Administrator</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Main Content Area -->
+            <main class="flex-1 overflow-y-auto p-6">
+                <!-- Page Title -->
+                <div class="mb-6">
+                    <h1 class="text-2xl font-bold text-gray-900">Domain Sync Interface</h1>
+                    <p class="text-sm text-gray-500 mt-1">Sync domain data from WHMCS API to local database</p>
+                </div>
+
+                <!-- Main Card -->
+                <div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                    <div class="px-6 py-4 border-b border-gray-200">
+                        <h2 class="text-lg font-semibold text-gray-900">Sync Controls</h2>
+                    </div>
+                    <div class="p-6">
                     <?php if (isset($error)): ?>
                         <div class="alert alert-error mb-6">
                             <div class="flex items-center gap-3">
@@ -109,68 +263,9 @@ if (!isset($error)) {
                         </div>
                     <?php endif; ?>
 
-                    <!-- Current Status -->
-                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-                        <div class="bg-primary-600 text-white p-6 rounded-xl">
-                            <div class="flex items-center justify-between mb-4">
-                                <h3 class="text-sm font-medium text-primary-100">Total Domains</h3>
-                                <div class="w-8 h-8 bg-primary-500 rounded-full flex items-center justify-center">
-                                    <i data-lucide="database" class="w-4 h-4"></i>
-                                </div>
-                            </div>
-                            <div class="text-4xl font-bold"><?= $domainStats['total_domains'] ?? 0 ?></div>
-                        </div>
 
-                        <div class="bg-white p-6 rounded-xl border border-gray-200">
-                            <div class="flex items-center justify-between mb-4">
-                                <h3 class="text-sm font-medium text-gray-500">Active Domains</h3>
-                                <div class="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
-                                    <i data-lucide="check-circle" class="w-4 h-4 text-green-600"></i>
-                                </div>
-                            </div>
-                            <div class="text-4xl font-bold text-gray-900"><?= $domainStats['active_domains'] ?? 0 ?></div>
-                        </div>
 
-                        <div class="bg-white p-6 rounded-xl border border-gray-200">
-                            <div class="flex items-center justify-between mb-4">
-                                <h3 class="text-sm font-medium text-gray-500">Expired Domains</h3>
-                                <div class="w-8 h-8 bg-red-100 rounded-full flex items-center justify-center">
-                                    <i data-lucide="alert-triangle" class="w-4 h-4 text-red-600"></i>
-                                </div>
-                            </div>
-                            <div class="text-4xl font-bold text-gray-900"><?= $domainStats['expired_domains'] ?? 0 ?></div>
-                        </div>
 
-                        <div class="bg-white p-6 rounded-xl border border-gray-200">
-                            <div class="flex items-center justify-between mb-4">
-                                <h3 class="text-sm font-medium text-gray-500">Pending Domains</h3>
-                                <div class="w-8 h-8 bg-yellow-100 rounded-full flex items-center justify-center">
-                                    <i data-lucide="clock" class="w-4 h-4 text-yellow-600"></i>
-                                </div>
-                            </div>
-                            <div class="text-4xl font-bold text-gray-900"><?= $domainStats['pending_domains'] ?? 0 ?></div>
-                        </div>
-                    </div>
-
-                    <!-- Last Sync Information -->
-                    <?php if ($lastSync): ?>
-                        <div class="alert alert-info mb-6">
-                            <div class="flex items-center gap-3">
-                                <span style="font-size: 1.5rem;">📊</span>
-                                <div>
-                                    <div class="font-semibold">Last Sync: <?= date('M j, Y g:i A', strtotime($lastSync['sync_started'])) ?></div>
-                                    <div class="text-sm mt-1">
-                                        Batch <?= $lastSync['batch_number'] ?> - 
-                                        <?= $lastSync['domains_processed'] ?> domains processed
-                                        (<?= $lastSync['domains_added'] ?> added, <?= $lastSync['domains_updated'] ?> updated)
-                                        <?php if ($lastSync['errors'] > 0): ?>
-                                            - <?= $lastSync['errors'] ?> errors
-                                        <?php endif; ?>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    <?php endif; ?>
 
                     <!-- Sync Configuration -->
                     <div class="bg-white rounded-xl border border-gray-200 p-6 mb-6">
@@ -183,12 +278,12 @@ if (!isset($error)) {
                                     type="number" 
                                     name="batch_number" 
                                     id="batch_number" 
-                                    class="form-input"
+                                    class="form-input border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                                     min="1" 
                                     value="1"
                                     required
                                 >
-                                <div class="form-help">Specify which batch of domains to sync (10 domains per batch)</div>
+                                <div class="form-help text-xs text-gray-500 mt-1 font-normal">Specify which batch of domains to sync (10 domains per batch)</div>
                             </div>
                             
                             <div class="form-group">
@@ -197,22 +292,22 @@ if (!isset($error)) {
                                     type="number" 
                                     name="batch_size" 
                                     id="batch_size" 
-                                    class="form-input"
+                                    class="form-input border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                                     min="5" 
                                     max="50"
                                     value="10"
                                     required
                                 >
-                                <div class="form-help">Number of domains to fetch per API call (5-50, recommended: 10)</div>
+                                <div class="form-help text-xs text-gray-500 mt-1 font-normal">Number of domains to fetch per API call (5-50, recommended: 10)</div>
                             </div>
                         </div>
                         
                         <div class="mt-6">
-                            <button type="button" id="startSync" class="btn btn-primary">
+                            <button type="button" id="startSync" class="inline-flex items-center px-4 py-2 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 transition-colors">
                                 <i data-lucide="refresh-cw" class="w-4 h-4 mr-2"></i>
                                 Start Sync
                             </button>
-                            <button type="button" id="stopSync" class="btn btn-secondary ml-4" style="display: none;">
+                            <button type="button" id="stopSync" class="inline-flex items-center px-4 py-2 bg-gray-600 text-white font-medium rounded-lg hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 transition-colors ml-4" style="display: none;">
                                 <i data-lucide="square" class="w-4 h-4 mr-2"></i>
                                 Stop Sync
                             </button>
@@ -272,27 +367,46 @@ if (!isset($error)) {
 
                     <!-- Action Buttons -->
                     <div class="flex items-center space-x-4">
-                        <a href="domains_db.php" class="btn btn-secondary">
+                        <a href="domains_db.php" class="inline-flex items-center px-4 py-2 bg-gray-600 text-white font-medium rounded-lg hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 transition-colors">
                             <i data-lucide="database" class="w-4 h-4 mr-2"></i>
                             View Database
                         </a>
-                        <a href="export_domains.php" class="btn btn-secondary">
+                        <a href="main_page.php?view=export" class="inline-flex items-center px-4 py-2 bg-gray-600 text-white font-medium rounded-lg hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 transition-colors">
                             <i data-lucide="download" class="w-4 h-4 mr-2"></i>
                             Export CSV
                         </a>
-                        <button type="button" id="clearOldData" class="btn btn-warning">
+                        <button type="button" id="clearOldData" class="inline-flex items-center px-4 py-2 bg-red-600 text-white font-medium rounded-lg hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition-colors">
                             <i data-lucide="trash-2" class="w-4 h-4 mr-2"></i>
                             Clear Old Data
                         </button>
                     </div>
+                    </div>
                 </div>
-            </div>
+            </main>
         </div>
     </div>
 
     <script>
         // Initialize Lucide icons
         lucide.createIcons();
+        
+        // Mobile sidebar toggle
+        document.getElementById('sidebar-toggle')?.addEventListener('click', function() {
+            const sidebar = document.querySelector('.w-64');
+            const overlay = document.getElementById('sidebar-overlay');
+            
+            sidebar.classList.toggle('-translate-x-full');
+            if (overlay) {
+                overlay.classList.toggle('hidden');
+            }
+        });
+        
+        // Close sidebar when clicking overlay
+        document.getElementById('sidebar-overlay')?.addEventListener('click', function() {
+            const sidebar = document.querySelector('.w-64');
+            this.classList.add('hidden');
+            sidebar.classList.add('-translate-x-full');
+        });
         
         let syncInProgress = false;
         let currentLogId = null;
