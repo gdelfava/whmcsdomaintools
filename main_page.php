@@ -2140,7 +2140,7 @@ if (userHasSettings()) {
 
         // Domain search and filter functionality
         document.addEventListener('DOMContentLoaded', function() {
-            console.log('DOM loaded, initializing search and filters...');
+            console.log('DOM loaded, initializing filters...');
             
             const searchInput = document.getElementById('domainSearch');
             const registrarFilter = document.getElementById('registrarFilter');
@@ -2163,6 +2163,18 @@ if (userHasSettings()) {
             if (domainsTableBody) {
                 const domainRows = domainsTableBody.querySelectorAll('[data-domain]');
                 const totalCount = domainRows.length;
+                
+                console.log('Found', totalCount, 'domain rows');
+                
+                // Debug: Log first few domain rows
+                if (domainRows.length > 0) {
+                    console.log('First domain row data attributes:', {
+                        domain: domainRows[0].getAttribute('data-domain'),
+                        registrar: domainRows[0].getAttribute('data-registrar'),
+                        expiry: domainRows[0].getAttribute('data-expiry'),
+                        status: domainRows[0].getAttribute('data-status')
+                    });
+                }
                 
                 // Function to check if domain matches expiry filter
                 function matchesExpiryFilter(expiryDateStr, filterValue) {
@@ -2199,8 +2211,7 @@ if (userHasSettings()) {
                         searchTerm,
                         registrarValue,
                         expiryValue,
-                        statusValue,
-                        totalRows: domainRows.length
+                        statusValue
                     });
                     
                     let visibleCount = 0;
@@ -2236,21 +2247,6 @@ if (userHasSettings()) {
                         } else {
                             row.style.display = 'none';
                         }
-                        
-                        // Debug first few rows
-                        if (visibleCount <= 3) {
-                            console.log('Row filtering:', {
-                                domainName,
-                                registrar,
-                                expiryDate,
-                                status,
-                                matchesSearch,
-                                matchesRegistrar,
-                                matchesExpiry,
-                                matchesStatus,
-                                shouldShow
-                            });
-                        }
                     });
                     
                     // Update domain count
@@ -2266,28 +2262,16 @@ if (userHasSettings()) {
                 
                 // Add event listeners
                 if (searchInput) {
-                    searchInput.addEventListener('input', function() {
-                        console.log('Search input changed:', this.value);
-                        applyFilters();
-                    });
+                    searchInput.addEventListener('input', applyFilters);
                 }
                 if (registrarFilter) {
-                    registrarFilter.addEventListener('change', function() {
-                        console.log('Registrar filter changed:', this.value);
-                        applyFilters();
-                    });
+                    registrarFilter.addEventListener('change', applyFilters);
                 }
                 if (expiryFilter) {
-                    expiryFilter.addEventListener('change', function() {
-                        console.log('Expiry filter changed:', this.value);
-                        applyFilters();
-                    });
+                    expiryFilter.addEventListener('change', applyFilters);
                 }
                 if (statusFilter) {
-                    statusFilter.addEventListener('change', function() {
-                        console.log('Status filter changed:', this.value);
-                        applyFilters();
-                    });
+                    statusFilter.addEventListener('change', applyFilters);
                 }
                 if (clearFiltersBtn) {
                     clearFiltersBtn.addEventListener('click', function() {
