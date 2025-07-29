@@ -165,33 +165,29 @@ try {
     
     foreach ($domains as $domain) {
         try {
-            // Quick domain insert/update
-            $sql = "INSERT INTO domains (
-                domain_id, domain_name, status, registrar, expiry_date, 
-                registration_date, next_due_date, amount, currency, notes, batch_number,
-                last_synced
-            ) VALUES (
-                :domain_id, :domain_name, :status, :registrar, :expiry_date,
-                :registration_date, :next_due_date, :amount, :currency, :notes, :batch_number,
-                NOW()
-            ) ON DUPLICATE KEY UPDATE
-                domain_name = VALUES(domain_name),
-                status = VALUES(status),
-                registrar = VALUES(registrar),
-                expiry_date = VALUES(expiry_date),
-                registration_date = VALUES(registration_date),
-                next_due_date = VALUES(next_due_date),
-                amount = VALUES(amount),
-                currency = VALUES(currency),
-                notes = VALUES(notes),
-                batch_number = VALUES(batch_number),
-                last_synced = NOW()
-            ";
+            // Extract domain data
+            $domainId = $domain['id'] ?? '';
+            $domainName = $domain['domainname'] ?? '';
             
-            $stmt = $pdo->prepare($sql);
-            $result = $stmt->execute([
-                'domain_id' => $domain['id'] ?? '',
-                'domain_name' => $domain['domainname'] ?? '',
+            if (empty($domainId) || empty($domainName)) {
+                // Skip invalid domains
+                $errors++;
+                continue;
+            }
+            
+            // Check if domain already exists
+            $checkSql = "SELECT id, domain_id, domain_name, status FROM domains WHERE domain_id = :domain_id OR domain_name = :domain_name LIMIT 1";
+            $checkStmt = $pdo->prepare($checkSql);
+            $checkStmt->execute([
+                'domain_id' => $domainId,
+                'domain_name' => $domainName
+            ]);
+            $existingDomain = $checkStmt->fetch(PDO::FETCH_ASSOC);
+            
+            // Prepare domain data
+            $domainData = [
+                'domain_id' => $domainId,
+                'domain_name' => $domainName,
                 'status' => $domain['status'] ?? 'Unknown',
                 'registrar' => $domain['registrar'] ?? null,
                 'expiry_date' => !empty($domain['expirydate']) ? date('Y-m-d', strtotime($domain['expirydate'])) : null,
@@ -201,47 +197,96 @@ try {
                 'currency' => $domain['currency'] ?? null,
                 'notes' => $domain['notes'] ?? null,
                 'batch_number' => $batchNumber
-            ]);
+            ];
             
-            if ($result) {
-                $processed++;
-                // Simple way to determine if added or updated
-                if ($stmt->rowCount() == 1) {
-                    $added++;
-                } else {
+            // Insert or update based on check
+            if ($existingDomain) {
+                // Domain exists - update it
+                $sql = "UPDATE domains SET 
+                    domain_name = :domain_name,
+                    status = :status,
+                    registrar = :registrar,
+                    expiry_date = :expiry_date,
+                    registration_date = :registration_date,
+                    next_due_date = :next_due_date,
+                    amount = :amount,
+                    currency = :currency,
+                    notes = :notes,
+                    batch_number = :batch_number,
+                    last_synced = NOW()
+                WHERE domain_id = :domain_id";
+                
+                $stmt = $pdo->prepare($sql);
+                $result = $stmt->execute($domainData);
+                
+                if ($result) {
+                    $processed++;
                     $updated++;
                 }
+            } else {
+                // New domain - insert it
+                $sql = "INSERT INTO domains (
+                    domain_id, domain_name, status, registrar, expiry_date, 
+                    registration_date, next_due_date, amount, currency, notes, batch_number,
+                    last_synced
+                ) VALUES (
+                    :domain_id, :domain_name, :status, :registrar, :expiry_date,
+                    :registration_date, :next_due_date, :amount, :currency, :notes, :batch_number,
+                    NOW()
+                )";
+                
+                $stmt = $pdo->prepare($sql);
+                $result = $stmt->execute($domainData);
+                
+                if ($result) {
+                    $processed++;
+                    $added++;
+                }
+            }
                 
                 // Fetch and store nameservers for this domain
-                if (!empty($domain['id'])) {
-                    $nsResponse = getNameservers($apiUrl, $apiIdentifier, $apiSecret, $domain['id']);
+                if (!empty($domainId) && $result) {
+                    // First check if nameservers already exist
+                    $checkNsSql = "SELECT domain_id FROM domain_nameservers WHERE domain_id = :domain_id LIMIT 1";
+                    $checkNsStmt = $pdo->prepare($checkNsSql);
+                    $checkNsStmt->execute(['domain_id' => $domainId]);
+                    $existingNs = $checkNsStmt->fetch(PDO::FETCH_ASSOC);
+                    
+                    // Only fetch nameservers if we need to add or update them
+                    $nsResponse = getNameservers($apiUrl, $apiIdentifier, $apiSecret, $domainId);
                     if ($nsResponse) {
-                        // Insert/update nameservers
-                        $nsSql = "INSERT INTO domain_nameservers (
-                            domain_id, ns1, ns2, ns3, ns4, ns5
-                        ) VALUES (
-                            :domain_id, :ns1, :ns2, :ns3, :ns4, :ns5
-                        ) ON DUPLICATE KEY UPDATE
-                            ns1 = VALUES(ns1),
-                            ns2 = VALUES(ns2),
-                            ns3 = VALUES(ns3),
-                            ns4 = VALUES(ns4),
-                            ns5 = VALUES(ns5),
-                            last_updated = CURRENT_TIMESTAMP
-                        ";
-                        
-                        $nsStmt = $pdo->prepare($nsSql);
-                        $nsStmt->execute([
-                            'domain_id' => $domain['id'],
+                        $nsData = [
+                            'domain_id' => $domainId,
                             'ns1' => $nsResponse['ns1'] ?? null,
                             'ns2' => $nsResponse['ns2'] ?? null,
                             'ns3' => $nsResponse['ns3'] ?? null,
                             'ns4' => $nsResponse['ns4'] ?? null,
                             'ns5' => $nsResponse['ns5'] ?? null
-                        ]);
+                        ];
+                        
+                        if ($existingNs) {
+                            // Update existing nameservers
+                            $nsSql = "UPDATE domain_nameservers SET 
+                                ns1 = :ns1,
+                                ns2 = :ns2,
+                                ns3 = :ns3,
+                                ns4 = :ns4,
+                                ns5 = :ns5,
+                                last_updated = NOW()
+                            WHERE domain_id = :domain_id";
+                        } else {
+                            // Insert new nameservers
+                            $nsSql = "INSERT INTO domain_nameservers (
+                                domain_id, ns1, ns2, ns3, ns4, ns5, last_updated
+                            ) VALUES (
+                                :domain_id, :ns1, :ns2, :ns3, :ns4, :ns5, NOW()
+                            )";
+                        }
+                        
+                        $nsStmt = $pdo->prepare($nsSql);
+                        $nsStmt->execute($nsData);
                     }
                 }
-            }
             
         } catch (Exception $e) {
             $errors++;
