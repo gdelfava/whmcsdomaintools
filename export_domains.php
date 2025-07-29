@@ -85,6 +85,24 @@ if (isset($_POST['export_csv'])) {
     
     $domainsResponse = getDomainsForExport($userSettings['api_url'], $userSettings['api_identifier'], $userSettings['api_secret'], $batchSize, $offset);
     
+    // Display debug information if available
+    if (isset($domainsResponse['debug_info']) && !empty($domainsResponse['debug_info'])) {
+        echo '<div class="alert alert-info mt-4">';
+        echo '<div class="flex items-center gap-3">';
+        echo '<span style="font-size: 1.25rem;">🔍</span>';
+        echo '<div>';
+        echo '<div class="font-semibold">API Debug Information</div>';
+        echo '<div class="text-sm mt-1 space-y-1">';
+        foreach ($domainsResponse['debug_info'] as $debugLine) {
+            echo '<div class="text-gray-600">' . htmlspecialchars($debugLine) . '</div>';
+        }
+        echo '</div>';
+        echo '</div>';
+        echo '</div>';
+        echo '</div>';
+        flush();
+    }
+    
     if (!isset($domainsResponse['domains']['domain']) || $domainsResponse['result'] !== 'success') {
         echo '<div class="alert alert-error mt-4">';
         echo '<div class="flex items-center gap-3">';
@@ -120,31 +138,40 @@ if (isset($_POST['export_csv'])) {
     echo '</div>';
     flush();
     
-    // Filter for active domains
+    // Process all domains (not just active ones)
     echo '<div class="alert alert-info mt-4">';
     echo '<div class="flex items-center gap-3">';
     echo '<span style="font-size: 1.25rem;">🔄</span>';
-    echo '<div><strong>Step 2:</strong> Filtering for active domains only...</div>';
+    echo '<div><strong>Step 2:</strong> Processing all domains (including expired, pending, etc.)...</div>';
     echo '</div>';
     echo '</div>';
     flush();
     
-    $activeDomains = [];
-    foreach ($domains as $domain) {
+    $allDomains = $domains; // Use all domains, not just active ones
+    
+    // Count domains by status for reporting
+    $statusCounts = [];
+    foreach ($allDomains as $domain) {
         $status = $domain['status'] ?? 'Unknown';
-        if (strtolower($status) === 'active') {
-            $activeDomains[] = $domain;
-        }
+        $statusCounts[$status] = ($statusCounts[$status] ?? 0) + 1;
     }
     
     echo '<div style="background:#e8f5e8; padding:15px; border-radius:6px; border-left:4px solid #4caf50; margin-top:15px;">';
-    echo '<p style="margin:0; color:#2e7d32;"><strong>✅ Step 2 Complete:</strong> Found ' . count($activeDomains) . ' active domains (out of ' . $totalInBatch . ' total in this batch)</p>';
+    echo '<p style="margin:0; color:#2e7d32;"><strong>✅ Step 2 Complete:</strong> Processing ' . count($allDomains) . ' domains in this batch</p>';
+    echo '<div style="margin-top:8px; font-size:12px; color:#2e7d32;">';
+    echo '<strong>Status breakdown:</strong> ';
+    $statusParts = [];
+    foreach ($statusCounts as $status => $count) {
+        $statusParts[] = $status . ': ' . $count;
+    }
+    echo implode(', ', $statusParts);
+    echo '</div>';
     echo '</div>';
     flush();
     
-    if (count($activeDomains) === 0) {
+    if (count($allDomains) === 0) {
         echo '<div style="background:#fff3cd; padding:15px; border-radius:6px; border-left:4px solid #ffc107; margin-top:15px;">';
-        echo '<p style="margin:0; color:#856404;"><strong>⚠️ Warning:</strong> No active domains found in this batch to export.</p>';
+        echo '<p style="margin:0; color:#856404;"><strong>⚠️ Warning:</strong> No domains found in this batch to export.</p>';
         echo '</div>';
         echo '<p style="margin-top:20px;"><a href="export_domains.php" style="background:#6c757d;color:white;padding:10px 20px;text-decoration:none;border-radius:5px;">🔙 Go Back</a></p>';
         echo '</div></body></html>';
@@ -152,12 +179,12 @@ if (isset($_POST['export_csv'])) {
     }
     
     // Create CSV file with batch number
-    $filename = 'domains_active_batch' . $batchNumber . '_' . date('Y-m-d_H-i-s') . '.csv';
+    $filename = 'domains_all_batch' . $batchNumber . '_' . date('Y-m-d_H-i-s') . '.csv';
     $file = fopen($filename, 'w');
     fputcsv($file, ['Domain Name', 'Domain ID', 'Status', 'NS1', 'NS2', 'NS3', 'NS4', 'NS5', 'Notes', 'Batch Number']);
     
     echo '<div style="background:#f8f9fa; padding:15px; border-radius:6px; border-left:4px solid #4f8cff; margin-top:15px;">';
-    echo '<p style="margin:0;"><strong>🔄 Step 3:</strong> Processing nameservers for each active domain in batch ' . $batchNumber . '...</p>';
+    echo '<p style="margin:0;"><strong>🔄 Step 3:</strong> Processing nameservers for each domain in batch ' . $batchNumber . '...</p>';
     echo '<div style="margin-top:10px; font-size:14px;">';
     flush();
     
@@ -165,13 +192,13 @@ if (isset($_POST['export_csv'])) {
     $successful = 0;
     $errors = 0;
     
-    foreach ($activeDomains as $domain) {
+    foreach ($allDomains as $domain) {
         $domainName = $domain['domainname'] ?? 'Unknown';
         $domainId = $domain['id'] ?? null;
         $domainStatus = $domain['status'] ?? 'Unknown';
         
         echo '<div style="padding:8px; margin:5px 0; background:#f0f0f0; border-radius:4px;">';
-        echo '🔄 <strong>(' . ($processed + 1) . '/' . count($activeDomains) . '):</strong> ' . htmlspecialchars($domainName);
+        echo '🔄 <strong>(' . ($processed + 1) . '/' . count($allDomains) . '):</strong> ' . htmlspecialchars($domainName);
         flush();
         
         if (!$domainId) {
@@ -393,7 +420,7 @@ if (isset($_POST['export_csv'])) {
                             
                             <div class="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-md">
                                 <div class="text-sm text-yellow-800">
-                                    <strong>Note:</strong> Only domains with "Active" status will be included in the export.
+                                    <strong>Note:</strong> All domains (Active, Expired, Pending, etc.) will be included in the export.
                                 </div>
                             </div>
                         </div>

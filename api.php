@@ -38,11 +38,11 @@ function getAllDomains($url, $identifier, $secret) {
             'limitnum'    => 1000
         ]);
     
-    // Add debug information to see what we're getting
+    // Capture debug information for export
+    $debugInfo = [];
     if (isset($_POST['export_csv'])) {
-        echo '<p>Direct GetClientsDomains API call result: ' . ($response['result'] ?? 'no result field') . '</p>';
-        echo '<p>Raw response keys: ' . implode(', ', array_keys($response)) . '</p>';
-        flush();
+        $debugInfo[] = 'Direct GetClientsDomains API call result: ' . ($response['result'] ?? 'no result field');
+        $debugInfo[] = 'Raw response keys: ' . implode(', ', array_keys($response));
     }
     
     // If direct call works, return it
@@ -60,8 +60,7 @@ function getAllDomains($url, $identifier, $secret) {
     
     // If direct call fails, try the client-by-client approach as fallback
     if (isset($_POST['export_csv'])) {
-        echo '<p>Direct call returned no domains, trying client-by-client approach...</p>';
-        flush();
+        $debugInfo[] = 'Direct call returned no domains, trying client-by-client approach...';
     }
     
     // Fallback: Get all clients first, then their domains
@@ -74,9 +73,8 @@ function getAllDomains($url, $identifier, $secret) {
     ]);
     
     if (isset($_POST['export_csv'])) {
-        echo '<p>GetClients result: ' . ($clientsResponse['result'] ?? 'no result field') . '</p>';
-        echo '<p>Number of clients found: ' . (isset($clientsResponse['clients']['client']) ? count($clientsResponse['clients']['client']) : 0) . '</p>';
-        flush();
+        $debugInfo[] = 'GetClients result: ' . ($clientsResponse['result'] ?? 'no result field');
+        $debugInfo[] = 'Number of clients found: ' . (isset($clientsResponse['clients']['client']) ? count($clientsResponse['clients']['client']) : 0);
     }
     
     $allDomains = [];
@@ -87,8 +85,7 @@ function getAllDomains($url, $identifier, $secret) {
             $clientId = $client['id'];
             
             if (isset($_POST['export_csv'])) {
-                echo '<p>Getting domains for client ID: ' . $clientId . '</p>';
-                flush();
+                $debugInfo[] = 'Getting domains for client ID: ' . $clientId;
             }
             
             $domainsResponse = curlCall($url, [
@@ -103,8 +100,7 @@ function getAllDomains($url, $identifier, $secret) {
             if (isset($domainsResponse['domains']['domain']) && is_array($domainsResponse['domains']['domain'])) {
                 $domainCount = count($domainsResponse['domains']['domain']);
                 if (isset($_POST['export_csv'])) {
-                    echo '<p>Found ' . $domainCount . ' domains for client ' . $clientId . '</p>';
-                    flush();
+                    $debugInfo[] = 'Found ' . $domainCount . ' domains for client ' . $clientId;
                 }
                 $allDomains = array_merge($allDomains, $domainsResponse['domains']['domain']);
             }
@@ -118,11 +114,18 @@ function getAllDomains($url, $identifier, $secret) {
         return strcmp($domainA, $domainB);
     });
     
-    return [
+    $result = [
         'domains' => [
             'domain' => $allDomains
         ]
     ];
+    
+    // Add debug info if available
+    if (!empty($debugInfo)) {
+        $result['debug_info'] = $debugInfo;
+    }
+    
+    return $result;
         
     
     }, 300); // Cache for 5 minutes

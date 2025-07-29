@@ -837,4 +837,16 @@ pre {
 
 .text-red-600 {
     color: #dc2626;
+}
+
+/* Force Actions header to be left-aligned */
+.grid .col-span-1:last-child {
+    text-align: left !important;
+    justify-content: flex-start !important;
+}
+
+/* Specific rule for Actions header */
+.grid .col-span-1:last-child.flex {
+    align-items: center;
+    justify-content: flex-start !important;
 } 

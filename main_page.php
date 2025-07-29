@@ -1425,7 +1425,12 @@ if (userHasSettings()) {
                              <h1 class="text-2xl font-bold text-gray-900 mb-2">Domains</h1>
                              <p class="text-gray-600">View and manage all your registered domains from local database.</p>
                          </div>
-
+                         <div class="flex items-center space-x-4">
+                             <button type="button" id="addDomainBtn" class="inline-flex items-center px-4 py-2 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 transition-colors">
+                                 <i data-lucide="plus" class="w-4 h-4 mr-2"></i>
+                                 Add Domain
+                             </button>
+                         </div>
                      </div>
                  </div>
 
@@ -1472,7 +1477,10 @@ if (userHasSettings()) {
                          'pending_projects' => $dbStats['pending_domains'] ?? 0
                      ];
                      
-                                         // Convert database format to API format for compatibility
+                                         // Get unique registrars for the add domain form
+                     $uniqueRegistrars = $db->getUniqueRegistrars();
+                     
+                     // Convert database format to API format for compatibility
                     $allDomains = [];
                     $allDomainsFromDb = $db->getDomains(1, 9999, '', '', 'domain_name', 'ASC', ''); // Get all for filters
                      foreach ($allDomainsFromDb as $domain) {
@@ -1575,30 +1583,30 @@ if (userHasSettings()) {
                              
                              <div class="flex items-center justify-between mb-4">
                                  <h3 class="text-lg font-semibold text-gray-900">All Domains</h3>
-                                 <div class="flex items-center space-x-4">
-                                     <!-- Search Field -->
-                                     <div class="relative">
-                                         <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                                             <i data-lucide="search" class="w-4 h-4 text-gray-400"></i>
-                                         </div>
-                                         <input 
-                                             type="text" 
-                                             name="search"
-                                             id="domainSearch" 
-                                             placeholder="Search domains..." 
-                                             value="<?= htmlspecialchars($searchTerm) ?>"
-                                             class="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent text-sm w-64"
-                                         >
-                                     </div>
-                                     <button type="submit" class="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors text-sm">
-                                         Search
-                                     </button>
-                                     <span class="text-sm text-gray-500" id="domainCount"><?= $totalDomains ?> domains</span>
-                                 </div>
                              </div>
                              
-                             <!-- Filters -->
+                             <!-- Search and Filters -->
                              <div class="flex items-center space-x-4 mb-4">
+                                 <!-- Search Field -->
+                                 <div class="relative">
+                                     <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                         <i data-lucide="search" class="w-4 h-4 text-gray-400"></i>
+                                     </div>
+                                     <input 
+                                         type="text" 
+                                         name="search"
+                                         id="domainSearch" 
+                                         placeholder="Search domains..." 
+                                         value="<?= htmlspecialchars($searchTerm) ?>"
+                                         class="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent text-sm w-64"
+                                     >
+                                 </div>
+                                 <button type="submit" class="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors text-sm">
+                                     Search
+                                 </button>
+                                 <a href="?view=domains" class="px-4 py-2 text-primary-600 hover:text-primary-700 font-medium border border-primary-200 rounded-lg hover:bg-primary-50 transition-colors text-sm">
+                                     Clear Filters
+                                 </a>
                                  <div class="text-sm font-medium text-gray-700">Filters:</div>
                              
                                  <!-- Registrar Filter -->
@@ -1630,11 +1638,6 @@ if (userHasSettings()) {
                                          <?php endforeach; ?>
                                      </select>
                                  </div>
-                                 
-                                 <!-- Clear Filters -->
-                                 <a href="?view=domains" class="text-sm text-primary-600 hover:text-primary-700 font-medium px-3 py-1.5 border border-primary-200 rounded-lg hover:bg-primary-50 transition-colors">
-                                     Clear Filters
-                                 </a>
                              </div>
                          </form>
                      </div>
@@ -1644,10 +1647,11 @@ if (userHasSettings()) {
                              <!-- Header -->
                              <div class="grid grid-cols-12 gap-0 bg-gray-50 border-b border-gray-200 sticky top-0 z-10">
                                  <div class="col-span-3 px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Domain Name</div>
-                                 <div class="col-span-3 px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Registrar</div>
+                                 <div class="col-span-2 px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Registrar</div>
                                  <div class="col-span-2 px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nameservers</div>
                                  <div class="col-span-2 px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Expiry Date</div>
                                  <div class="col-span-2 px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</div>
+                                 <div class="col-span-1 px-6 py-3"></div>
                              </div>
                              <!-- Body -->
                              <div id="domainsTableBody" class="bg-white divide-y divide-gray-200">
@@ -1661,6 +1665,8 @@ if (userHasSettings()) {
                                      $ns1 = $domain['ns1'] ?? '';
                                      $ns2 = $domain['ns2'] ?? '';
                                      $ns3 = $domain['ns3'] ?? '';
+                                     $ns4 = $domain['ns4'] ?? '';
+                                     $ns5 = $domain['ns5'] ?? '';
                                      ?>
                                      <div class="grid grid-cols-12 gap-0 hover:bg-gray-50 transition-colors border-b border-gray-200" data-domain="<?= htmlspecialchars(strtolower($domainName)) ?>" data-registrar="<?= htmlspecialchars(strtolower($registrar)) ?>" data-expiry="<?= htmlspecialchars(strtolower(!empty($expiryDate) ? date('M j, Y', strtotime($expiryDate)) : 'n/a')) ?>" data-status="<?= htmlspecialchars(strtolower($status)) ?>">
                                          <div class="col-span-3 px-6 py-4 flex items-center">
@@ -1671,8 +1677,8 @@ if (userHasSettings()) {
                                                  <div class="text-sm font-medium text-gray-900 truncate"><?= htmlspecialchars($domainName) ?></div>
                                              </div>
                                          </div>
-                                         <div class="col-span-3 px-6 py-4 flex items-center">
-                                             <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                         <div class="col-span-2 px-6 py-4 flex items-center">
+                                             <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 truncate">
                                                  <?= htmlspecialchars($registrar) ?>
                                              </span>
                                          </div>
@@ -1682,6 +1688,15 @@ if (userHasSettings()) {
                                                      <div class="font-medium text-gray-900 truncate"><?= htmlspecialchars($ns1) ?></div>
                                                      <?php if (!empty($ns2)): ?>
                                                          <div class="text-gray-600 truncate"><?= htmlspecialchars($ns2) ?></div>
+                                                     <?php endif; ?>
+                                                     <?php if (!empty($ns3)): ?>
+                                                         <div class="text-gray-600 truncate"><?= htmlspecialchars($ns3) ?></div>
+                                                     <?php endif; ?>
+                                                     <?php if (!empty($ns4)): ?>
+                                                         <div class="text-gray-600 truncate"><?= htmlspecialchars($ns4) ?></div>
+                                                     <?php endif; ?>
+                                                     <?php if (!empty($ns5)): ?>
+                                                         <div class="text-gray-600 truncate"><?= htmlspecialchars($ns5) ?></div>
                                                      <?php endif; ?>
                                                  </div>
                                              <?php else: ?>
@@ -1715,6 +1730,26 @@ if (userHasSettings()) {
                                              <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium <?= $statusColor ?>">
                                                  <?= htmlspecialchars($status) ?>
                                              </span>
+                                         </div>
+                                         <div class="col-span-1 px-6 py-4 flex items-center justify-end space-x-1">
+                                             <button type="button" 
+                                                     class="edit-domain-btn inline-flex items-center px-2 py-1 text-xs font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 transition-colors"
+                                                     data-domain-id="<?= htmlspecialchars($domain['domain_id'] ?? $domain['id'] ?? '') ?>"
+                                                     data-domain-name="<?= htmlspecialchars($domainName) ?>"
+                                                     data-registrar="<?= htmlspecialchars($registrar) ?>"
+                                                     data-status="<?= htmlspecialchars($status) ?>"
+                                                     data-expiry-date="<?= htmlspecialchars($expiryDate) ?>"
+                                                     data-nameservers="<?= htmlspecialchars($ns1 . ($ns2 ? ', ' . $ns2 : '') . ($ns3 ? ', ' . $ns3 : '') . ($ns4 ? ', ' . $ns4 : '') . ($ns5 ? ', ' . $ns5 : '')) ?>">
+                                                 <i data-lucide="edit-3" class="w-3 h-3 mr-1"></i>
+                                                 Edit
+                                             </button>
+                                             <button type="button" 
+                                                     class="delete-domain-btn inline-flex items-center px-2 py-1 text-xs font-medium text-red-700 bg-red-100 rounded-md hover:bg-red-200 transition-colors"
+                                                     data-domain-id="<?= htmlspecialchars($domain['domain_id'] ?? $domain['id'] ?? '') ?>"
+                                                     data-domain-name="<?= htmlspecialchars($domainName) ?>">
+                                                 <i data-lucide="trash-2" class="w-3 h-3 mr-1"></i>
+                                                 Delete
+                                             </button>
                                          </div>
                                      </div>
                                  <?php endforeach; ?>
@@ -2142,7 +2177,7 @@ if (userHasSettings()) {
 
                          <div class="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-md">
                              <div class="text-sm text-yellow-800">
-                                 <strong>Note:</strong> Only domains with "Active" status will be included in the export.
+                                 <strong>Note:</strong> All domains (Active, Expired, Pending, etc.) will be included in the export.
                              </div>
                          </div>
                      </div>
@@ -2224,9 +2259,395 @@ if (userHasSettings()) {
         <?php endif; ?>
     </script>
     
+    <!-- Add Domain Modal -->
+    <div id="addDomainModal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden">
+        <div class="flex items-center justify-center min-h-screen p-4">
+            <div class="bg-white rounded-xl shadow-xl max-w-md w-full">
+                <div class="px-6 py-4 border-b border-gray-200">
+                    <div class="flex items-center justify-between">
+                        <h3 class="text-lg font-semibold text-gray-900">Add New Domain</h3>
+                        <button type="button" id="closeAddDomainModal" class="text-gray-400 hover:text-gray-600 transition-colors">
+                            <i data-lucide="x" class="w-5 h-5"></i>
+                        </button>
+                    </div>
+                </div>
+                
+                <form id="addDomainForm" class="p-6">
+                    <div class="space-y-4">
+                        <div>
+                            <label for="domainName" class="block text-sm font-medium text-gray-700 mb-1">Domain Name</label>
+                            <input type="text" id="domainName" name="domain_name" required 
+                                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                                   placeholder="example.com">
+                        </div>
+                        
+                        <div>
+                            <label for="registrar" class="block text-sm font-medium text-gray-700 mb-1">Registrar</label>
+                            <div class="space-y-2">
+                                <select id="registrar" name="registrar" required 
+                                        class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500">
+                                    <option value="">Select a registrar...</option>
+                                    <option value="__add_new__">+ Add New Registrar</option>
+                                    <?php if (isset($uniqueRegistrars) && !empty($uniqueRegistrars)): ?>
+                                        <?php foreach ($uniqueRegistrars as $registrar): ?>
+                                            <option value="<?= htmlspecialchars($registrar) ?>"><?= htmlspecialchars($registrar) ?></option>
+                                        <?php endforeach; ?>
+                                    <?php endif; ?>
+                                </select>
+                                <input type="text" id="newRegistrar" name="new_registrar" 
+                                       class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 hidden"
+                                       placeholder="Enter new registrar name">
+                            </div>
+                        </div>
+                        
+                        <div>
+                            <label for="status" class="block text-sm font-medium text-gray-700 mb-1">Status</label>
+                            <select id="status" name="status" required 
+                                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500">
+                                <option value="Active">Active</option>
+                                <option value="Expired">Expired</option>
+                                <option value="Pending">Pending</option>
+                                <option value="Cancelled">Cancelled</option>
+                                <option value="Grace">Grace</option>
+                                <option value="Redemption">Redemption</option>
+                                <option value="Transferred Away">Transferred Away</option>
+                            </select>
+                        </div>
+                        
+                        <div>
+                            <label for="expiryDate" class="block text-sm font-medium text-gray-700 mb-1">Expiry Date</label>
+                            <input type="date" id="expiryDate" name="expiry_date" required 
+                                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500">
+                        </div>
+                        
+
+                        
+                        <div>
+                            <label for="nameservers" class="block text-sm font-medium text-gray-700 mb-1">Nameservers (comma separated)</label>
+                            <input type="text" id="nameservers" name="nameservers" 
+                                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                                   placeholder="ns1.example.com, ns2.example.com">
+                        </div>
+                        
+
+                    </div>
+                    
+                    <div class="flex items-center justify-end space-x-3 mt-6">
+                        <button type="button" id="cancelAddDomain" class="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors">
+                            Cancel
+                        </button>
+                        <button type="submit" class="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors">
+                            Add Domain
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Domain Modal -->
+    <div id="editDomainModal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden">
+        <div class="flex items-center justify-center min-h-screen p-4">
+            <div class="bg-white rounded-xl shadow-xl max-w-md w-full">
+                <div class="px-6 py-4 border-b border-gray-200">
+                    <div class="flex items-center justify-between">
+                        <h3 class="text-lg font-semibold text-gray-900">Edit Domain</h3>
+                        <button type="button" id="closeEditDomainModal" class="text-gray-400 hover:text-gray-600 transition-colors">
+                            <i data-lucide="x" class="w-5 h-5"></i>
+                        </button>
+                    </div>
+                </div>
+                
+                <form id="editDomainForm" class="p-6">
+                    <input type="hidden" id="editDomainId" name="domain_id">
+                    <div class="space-y-4">
+                        <div>
+                            <label for="editDomainName" class="block text-sm font-medium text-gray-700 mb-1">Domain Name</label>
+                            <input type="text" id="editDomainName" name="domain_name" required 
+                                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                                   placeholder="example.com">
+                        </div>
+                        
+                        <div>
+                            <label for="editRegistrar" class="block text-sm font-medium text-gray-700 mb-1">Registrar</label>
+                            <div class="space-y-2">
+                                <select id="editRegistrar" name="registrar" required 
+                                        class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500">
+                                    <option value="">Select a registrar...</option>
+                                    <option value="__add_new__">+ Add New Registrar</option>
+                                    <?php if (isset($uniqueRegistrars) && !empty($uniqueRegistrars)): ?>
+                                        <?php foreach ($uniqueRegistrars as $registrar): ?>
+                                            <option value="<?= htmlspecialchars($registrar) ?>"><?= htmlspecialchars($registrar) ?></option>
+                                        <?php endforeach; ?>
+                                    <?php endif; ?>
+                                </select>
+                                <input type="text" id="editNewRegistrar" name="new_registrar" 
+                                       class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 hidden"
+                                       placeholder="Enter new registrar name">
+                            </div>
+                        </div>
+                        
+                        <div>
+                            <label for="editStatus" class="block text-sm font-medium text-gray-700 mb-1">Status</label>
+                            <select id="editStatus" name="status" required 
+                                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500">
+                                <option value="Active">Active</option>
+                                <option value="Expired">Expired</option>
+                                <option value="Pending">Pending</option>
+                                <option value="Cancelled">Cancelled</option>
+                                <option value="Grace">Grace</option>
+                                <option value="Redemption">Redemption</option>
+                                <option value="Transferred Away">Transferred Away</option>
+                            </select>
+                        </div>
+                        
+                        <div>
+                            <label for="editExpiryDate" class="block text-sm font-medium text-gray-700 mb-1">Expiry Date</label>
+                            <input type="date" id="editExpiryDate" name="expiry_date" required 
+                                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500">
+                        </div>
+                        
+                        <div>
+                            <label for="editNameservers" class="block text-sm font-medium text-gray-700 mb-1">Nameservers (comma separated)</label>
+                            <input type="text" id="editNameservers" name="nameservers" 
+                                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                                   placeholder="ns1.example.com, ns2.example.com">
+                        </div>
+                    </div>
+                    
+                    <div class="flex items-center justify-end space-x-3 mt-6">
+                        <button type="button" id="cancelEditDomain" class="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors">
+                            Cancel
+                        </button>
+                        <button type="submit" class="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors">
+                            Update Domain
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
     <!-- Cache Modal Script -->
     <script src="js/cache-modal.js"></script>
     
+    <script>
+        // Add Domain Modal Functionality
+        document.addEventListener('DOMContentLoaded', function() {
+            const addDomainBtn = document.getElementById('addDomainBtn');
+            const addDomainModal = document.getElementById('addDomainModal');
+            const closeAddDomainModal = document.getElementById('closeAddDomainModal');
+            const cancelAddDomain = document.getElementById('cancelAddDomain');
+            const addDomainForm = document.getElementById('addDomainForm');
+            
+            // Open modal
+            addDomainBtn?.addEventListener('click', function() {
+                addDomainModal.classList.remove('hidden');
+                // Set default date
+                const today = new Date().toISOString().split('T')[0];
+                document.getElementById('expiryDate').value = today;
+            });
+            
+            // Close modal
+            function closeModal() {
+                addDomainModal.classList.add('hidden');
+                addDomainForm.reset();
+            }
+            
+            closeAddDomainModal?.addEventListener('click', closeModal);
+            cancelAddDomain?.addEventListener('click', closeModal);
+            
+            // Close modal when clicking outside
+            addDomainModal?.addEventListener('click', function(e) {
+                if (e.target === addDomainModal) {
+                    closeModal();
+                }
+            });
+            
+            // Registrar field functionality for Add Domain
+            const registrarSelect = document.getElementById('registrar');
+            const newRegistrarInput = document.getElementById('newRegistrar');
+            
+            registrarSelect?.addEventListener('change', function() {
+                if (this.value === '__add_new__') {
+                    newRegistrarInput.classList.remove('hidden');
+                    newRegistrarInput.required = true;
+                    newRegistrarInput.focus();
+                } else {
+                    newRegistrarInput.classList.add('hidden');
+                    newRegistrarInput.required = false;
+                    newRegistrarInput.value = '';
+                }
+            });
+            
+            // Handle form submission
+            addDomainForm?.addEventListener('submit', function(e) {
+                e.preventDefault();
+                
+                const formData = new FormData(addDomainForm);
+                
+                // If "Add New Registrar" is selected, use the new registrar value
+                if (formData.get('registrar') === '__add_new__') {
+                    const newRegistrarValue = formData.get('new_registrar');
+                    if (!newRegistrarValue || newRegistrarValue.trim() === '') {
+                        alert('Please enter a registrar name');
+                        return;
+                    }
+                    formData.set('registrar', newRegistrarValue.trim());
+                    formData.delete('new_registrar');
+                }
+                
+                fetch('add_domain.php', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        alert('Domain added successfully!');
+                        closeModal();
+                        location.reload(); // Refresh the page to show the new domain
+                    } else {
+                        alert('Error: ' + (data.error || 'Failed to add domain'));
+                    }
+                })
+                .catch(error => {
+                    alert('Error: ' + error.message);
+                });
+            });
+            
+            // Edit Domain Modal Functionality
+            const editDomainBtn = document.querySelectorAll('.edit-domain-btn');
+            const editDomainModal = document.getElementById('editDomainModal');
+            const closeEditDomainModal = document.getElementById('closeEditDomainModal');
+            const cancelEditDomain = document.getElementById('cancelEditDomain');
+            const editDomainForm = document.getElementById('editDomainForm');
+            
+            // Open edit modal
+            editDomainBtn.forEach(btn => {
+                btn.addEventListener('click', function() {
+                    const domainId = this.getAttribute('data-domain-id');
+                    const domainName = this.getAttribute('data-domain-name');
+                    const registrar = this.getAttribute('data-registrar');
+                    const status = this.getAttribute('data-status');
+                    const expiryDate = this.getAttribute('data-expiry-date');
+                    const nameservers = this.getAttribute('data-nameservers');
+                    
+                    // Populate form fields
+                    document.getElementById('editDomainId').value = domainId;
+                    document.getElementById('editDomainName').value = domainName;
+                    document.getElementById('editRegistrar').value = registrar;
+                    document.getElementById('editStatus').value = status;
+                    document.getElementById('editExpiryDate').value = expiryDate;
+                    document.getElementById('editNameservers').value = nameservers;
+                    
+                    editDomainModal.classList.remove('hidden');
+                });
+            });
+            
+            // Close edit modal
+            function closeEditModal() {
+                editDomainModal.classList.add('hidden');
+                editDomainForm.reset();
+            }
+            
+            closeEditDomainModal?.addEventListener('click', closeEditModal);
+            cancelEditDomain?.addEventListener('click', closeEditModal);
+            
+            // Close edit modal when clicking outside
+            editDomainModal?.addEventListener('click', function(e) {
+                if (e.target === editDomainModal) {
+                    closeEditModal();
+                }
+            });
+            
+            // Registrar field functionality for Edit Domain
+            const editRegistrarSelect = document.getElementById('editRegistrar');
+            const editNewRegistrarInput = document.getElementById('editNewRegistrar');
+            
+            editRegistrarSelect?.addEventListener('change', function() {
+                if (this.value === '__add_new__') {
+                    editNewRegistrarInput.classList.remove('hidden');
+                    editNewRegistrarInput.required = true;
+                    editNewRegistrarInput.focus();
+                } else {
+                    editNewRegistrarInput.classList.add('hidden');
+                    editNewRegistrarInput.required = false;
+                    editNewRegistrarInput.value = '';
+                }
+            });
+            
+            // Handle edit form submission
+            editDomainForm?.addEventListener('submit', function(e) {
+                e.preventDefault();
+                
+                const formData = new FormData(editDomainForm);
+                
+                // If "Add New Registrar" is selected, use the new registrar value
+                if (formData.get('registrar') === '__add_new__') {
+                    const newRegistrarValue = formData.get('new_registrar');
+                    if (!newRegistrarValue || newRegistrarValue.trim() === '') {
+                        alert('Please enter a registrar name');
+                        return;
+                    }
+                    formData.set('registrar', newRegistrarValue.trim());
+                    formData.delete('new_registrar');
+                }
+                
+                fetch('update_domain.php', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        alert('Domain updated successfully!');
+                        closeEditModal();
+                        location.reload(); // Refresh the page to show the updated domain
+                    } else {
+                        alert('Error: ' + (data.error || 'Failed to update domain'));
+                    }
+                })
+                .catch(error => {
+                    alert('Error: ' + error.message);
+                });
+            });
+            
+            // Delete Domain Functionality
+            const deleteDomainBtn = document.querySelectorAll('.delete-domain-btn');
+            
+            deleteDomainBtn.forEach(btn => {
+                btn.addEventListener('click', function() {
+                    const domainId = this.getAttribute('data-domain-id');
+                    const domainName = this.getAttribute('data-domain-name');
+                    
+                    // Show confirmation dialog
+                    if (confirm(`Are you sure you want to delete the domain "${domainName}"?\n\nThis action cannot be undone.`)) {
+                        // Create form data
+                        const formData = new FormData();
+                        formData.append('domain_id', domainId);
+                        
+                        fetch('delete_domain.php', {
+                            method: 'POST',
+                            body: formData
+                        })
+                        .then(response => response.json())
+                        .then(data => {
+                            if (data.success) {
+                                alert('Domain deleted successfully!');
+                                location.reload(); // Refresh the page to show the updated list
+                            } else {
+                                alert('Error: ' + (data.error || 'Failed to delete domain'));
+                            }
+                        })
+                        .catch(error => {
+                            alert('Error: ' + error.message);
+                        });
+                    }
+                });
+            });
+        });
+    </script>
 
 </body>
 </html> 

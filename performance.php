@@ -93,7 +93,7 @@ function generateResourceHints() {
     $hints = [
         // Preload critical resources
         '<link rel="preload" href="css/optimized.css" as="style">',
-        '<link rel="preload" href="js/spa-router.js" as="script">',
+
         '<link rel="preload" href="https://unpkg.com/lucide@latest/dist/umd/lucide.js" as="script" crossorigin>',
         
         // DNS prefetch for external resources

@@ -392,5 +392,18 @@ class Database {
             return [];
         }
     }
+    
+    public function getUniqueRegistrars() {
+        $sql = "SELECT DISTINCT registrar FROM domains WHERE registrar IS NOT NULL AND registrar != '' ORDER BY registrar ASC";
+        
+        try {
+            $stmt = $this->connection->prepare($sql);
+            $stmt->execute();
+            return $stmt->fetchAll(PDO::FETCH_COLUMN);
+        } catch (PDOException $e) {
+            error_log("Error getting unique registrars: " . $e->getMessage());
+            return [];
+        }
+    }
 }
 ?> 
