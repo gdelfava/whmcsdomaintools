@@ -163,6 +163,137 @@ if ($currentView === 'nameservers') {
      }
  }
 
+// Handle database setup
+$dbMessage = '';
+$dbMessageType = '';
+$dbTestResult = null;
+
+if ($currentView === 'database_setup') {
+    // Function to test database connection
+    function testDatabaseConnection($host, $port, $database, $username, $password) {
+        try {
+            $dsn = "mysql:host=$host;port=$port;dbname=$database;charset=utf8mb4";
+            $pdo = new PDO($dsn, $username, $password, [
+                PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+                PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+                PDO::ATTR_EMULATE_PREPARES => false,
+            ]);
+            return ['success' => true, 'message' => 'Database connection successful'];
+        } catch (PDOException $e) {
+            return ['success' => false, 'message' => 'Database connection failed: ' . $e->getMessage()];
+        }
+    }
+
+    // Function to create database if it doesn't exist
+    function createDatabaseIfNotExists($host, $port, $username, $password, $database) {
+        try {
+            $dsn = "mysql:host=$host;port=$port;charset=utf8mb4";
+            $pdo = new PDO($dsn, $username, $password, [
+                PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+            ]);
+            
+            $pdo->exec("CREATE DATABASE IF NOT EXISTS `$database` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
+            return ['success' => true, 'message' => "Database '$database' created successfully"];
+        } catch (PDOException $e) {
+            return ['success' => false, 'message' => 'Failed to create database: ' . $e->getMessage()];
+        }
+    }
+
+    if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+        $host = trim($_POST['db_host'] ?? '');
+        $port = trim($_POST['db_port'] ?? '3306');
+        $database = trim($_POST['db_name'] ?? '');
+        $username = trim($_POST['db_user'] ?? '');
+        $password = trim($_POST['db_password'] ?? '');
+        
+        if (empty($host) || empty($database) || empty($username)) {
+            $dbMessage = 'Please fill in all required fields.';
+            $dbMessageType = 'error';
+        } else {
+            // First try to create database if it doesn't exist
+            $createResult = createDatabaseIfNotExists($host, $port, $username, $password, $database);
+            
+            if ($createResult['success']) {
+                // Test connection to the specific database
+                $dbTestResult = testDatabaseConnection($host, $port, $database, $username, $password);
+                
+                if ($dbTestResult['success']) {
+                    // Save to .env file
+                    $envContent = file_get_contents('.env') ?: '';
+                    $envLines = explode("\n", $envContent);
+                    
+                    $envVars = [
+                        'DB_HOST' => $host,
+                        'DB_PORT' => $port,
+                        'DB_NAME' => $database,
+                        'DB_USER' => $username,
+                        'DB_PASSWORD' => $password
+                    ];
+                    
+                    foreach ($envVars as $key => $value) {
+                        $found = false;
+                        foreach ($envLines as $i => $line) {
+                            if (strpos($line, $key . '=') === 0) {
+                                $envLines[$i] = "$key=$value";
+                                $found = true;
+                                break;
+                            }
+                        }
+                        if (!$found) {
+                            $envLines[] = "$key=$value";
+                        }
+                    }
+                    
+                    $newEnvContent = implode("\n", $envLines);
+                    if (file_put_contents('.env', $newEnvContent)) {
+                        $dbMessage = 'Database configuration saved successfully! You can now use the database features.';
+                        $dbMessageType = 'success';
+                    } else {
+                        $dbMessage = 'Database connection successful, but failed to save configuration. Please check file permissions.';
+                        $dbMessageType = 'warning';
+                    }
+                } else {
+                    $dbMessage = $dbTestResult['message'];
+                    $dbMessageType = 'error';
+                }
+            } else {
+                $dbMessage = $createResult['message'];
+                $dbMessageType = 'error';
+            }
+        }
+    }
+
+    // Get current database settings
+    $currentHost = getEnvVar('DB_HOST', 'localhost');
+    $currentPort = getEnvVar('DB_PORT', '3306');
+    $currentDatabase = getEnvVar('DB_NAME', 'domain_tools');
+    $currentUser = getEnvVar('DB_USER', 'root');
+    $currentPassword = getEnvVar('DB_PASSWORD', '');
+}
+
+// Handle create tables
+$createTablesMessage = '';
+$createTablesMessageType = '';
+
+if ($currentView === 'create_tables') {
+    try {
+        // Get database instance
+        $db = Database::getInstance();
+        
+        // Create tables
+        if ($db->createTables()) {
+            $createTablesMessage = '✅ SUCCESS: Database tables created successfully!';
+            $createTablesMessageType = 'success';
+        } else {
+            $createTablesMessage = '❌ ERROR: Failed to create database tables.';
+            $createTablesMessageType = 'error';
+        }
+    } catch (Exception $e) {
+        $createTablesMessage = '❌ ERROR: ' . $e->getMessage();
+        $createTablesMessageType = 'error';
+    }
+}
+
 // Handle export domains
 $exportMessage = '';
 $exportResults = [];
@@ -365,11 +496,61 @@ if (empty($recentProjects)) {
     ];
 }
 
+// Check setup completion status
+function checkDatabaseSetupComplete() {
+    $host = getEnvVar('DB_HOST', '');
+    $port = getEnvVar('DB_PORT', '');
+    $database = getEnvVar('DB_NAME', '');
+    $user = getEnvVar('DB_USER', '');
+    
+    return !empty($host) && !empty($port) && !empty($database) && !empty($user);
+}
+
+function checkTablesCreated() {
+    try {
+        $db = Database::getInstance();
+        $pdo = $db->getConnection();
+        
+        // Check if the domains table exists
+        $stmt = $pdo->query("SHOW TABLES LIKE 'domains'");
+        return $stmt->rowCount() > 0;
+    } catch (Exception $e) {
+        return false;
+    }
+}
+
+function checkApiSettingsComplete() {
+    $userSettings = getUserSettings();
+    if (!$userSettings) {
+        return false;
+    }
+    
+    $requiredFields = ['api_url', 'api_identifier', 'api_secret', 'default_ns1', 'default_ns2'];
+    foreach ($requiredFields as $field) {
+        if (empty($userSettings[$field])) {
+            return false;
+        }
+    }
+    
+    return true;
+}
+
+// Get setup completion status
+$setupStatus = [
+    'database_setup' => checkDatabaseSetupComplete(),
+    'tables_created' => checkTablesCreated(),
+    'api_configured' => checkApiSettingsComplete()
+];
+
+// Calculate setup progress
+$completedSteps = array_sum($setupStatus);
+$totalSteps = count($setupStatus);
+$progressPercentage = ($totalSteps > 0) ? ($completedSteps / $totalSteps) * 100 : 0;
+
 // Get system status information
 $systemStatus = [];
 
-// Get registrars data
-$registrarsData = [];
+
 
 // Get server health data
 $serverHealth = [];
@@ -434,35 +615,7 @@ if (userHasSettings()) {
                 'status' => 'completed'
             ];
             
-            // Get registrars and count domains per registrar
-            $registrarsResponse = getRegistrars($userSettings['api_url'], $userSettings['api_identifier'], $userSettings['api_secret']);
-            if (isset($registrarsResponse['registrars']) && is_array($registrarsResponse['registrars'])) {
-                $allDomains = $response['domains']['domain'];
-                
-                // Count domains per registrar
-                $registrarCounts = [];
-                foreach ($allDomains as $domain) {
-                    $registrar = $domain['registrar'] ?? 'Unknown';
-                    if (!isset($registrarCounts[$registrar])) {
-                        $registrarCounts[$registrar] = 0;
-                    }
-                    $registrarCounts[$registrar]++;
-                }
-                
-                // Sort by domain count (highest first)
-                arsort($registrarCounts);
-                
-                // Take top 5 registrars
-                $topRegistrars = array_slice($registrarCounts, 0, 5, true);
-                
-                foreach ($topRegistrars as $registrar => $count) {
-                    $registrarsData[] = [
-                        'name' => $registrar,
-                        'count' => $count,
-                        'percentage' => round(($count / $domainCount) * 100, 1)
-                    ];
-                }
-            }
+            
         } else {
             $systemStatus[] = [
                 'name' => 'Domain Count',
@@ -495,7 +648,7 @@ $ordersStats = [
     'orders_thisyear_total' => '0'
 ];
 
-// Get domain status distribution for analytics
+// Get domain status distribution for analytics from database
 $domainStatusStats = [
     'Active' => 0,
     'Pending' => 0,
@@ -505,6 +658,122 @@ $domainStatusStats = [
     'Other' => 0
 ];
 
+// Get registrars data from database
+$registrarsData = [];
+
+try {
+    $db = Database::getInstance();
+    
+    // Get domain status distribution from database
+    $statusQuery = "SELECT status, COUNT(*) as count FROM domains GROUP BY status";
+    $statusResult = $db->getConnection()->query($statusQuery);
+    
+    while ($row = $statusResult->fetch(PDO::FETCH_ASSOC)) {
+        $status = ucfirst(strtolower($row['status'])); // Normalize status
+        $count = (int)$row['count'];
+        
+        if (isset($domainStatusStats[$status])) {
+            $domainStatusStats[$status] = $count;
+        } else {
+            $domainStatusStats['Other'] += $count;
+        }
+    }
+    
+    // Get registrars data from database
+    $registrarQuery = "SELECT registrar, COUNT(*) as count FROM domains GROUP BY registrar ORDER BY count DESC LIMIT 5";
+    $registrarResult = $db->getConnection()->query($registrarQuery);
+    
+    $totalDomains = array_sum($domainStatusStats);
+    
+    while ($row = $registrarResult->fetch(PDO::FETCH_ASSOC)) {
+        $registrar = $row['registrar'] ?: 'Unknown';
+        $count = (int)$row['count'];
+        $percentage = $totalDomains > 0 ? round(($count / $totalDomains) * 100, 1) : 0;
+        
+        $registrarsData[] = [
+            'name' => $registrar,
+            'count' => $count,
+            'percentage' => $percentage
+        ];
+    }
+    
+} catch (Exception $e) {
+    // If database is not available, keep empty stats
+    error_log("Database error in domain analytics: " . $e->getMessage());
+}
+
+// Handle database view
+$databaseViewDomains = [];
+$databaseViewTotalDomains = 0;
+$databaseViewDomainStats = [];
+$databaseViewError = null;
+$databaseViewLastSync = null;
+
+if ($currentView === 'database_view') {
+    try {
+        $db = Database::getInstance();
+        
+        // Get search and filter parameters
+        $dbSearch = $_GET['search'] ?? '';
+        $dbStatus = $_GET['status'] ?? '';
+        $dbRegistrar = $_GET['registrar'] ?? '';
+        $dbPage = max(1, intval($_GET['page'] ?? 1));
+        $dbPerPage = 25;
+        $dbOrderBy = $_GET['order_by'] ?? 'domain_name';
+        $dbOrderDir = $_GET['order_dir'] ?? 'ASC';
+
+        // Validate order by field
+        $allowedOrderBy = ['domain_name', 'status', 'registrar', 'expiry_date', 'last_synced'];
+        if (!in_array($dbOrderBy, $allowedOrderBy)) {
+            $dbOrderBy = 'domain_name';
+        }
+
+        // Validate order direction
+        $dbOrderDir = strtoupper($dbOrderDir) === 'DESC' ? 'DESC' : 'ASC';
+
+        // Get domains from database
+        $databaseViewDomains = $db->getDomains($dbPage, $dbPerPage, $dbSearch, $dbStatus, $dbOrderBy, $dbOrderDir, $dbRegistrar);
+        $databaseViewTotalDomains = $db->getDomainCount($dbSearch, $dbStatus, $dbRegistrar);
+        $databaseViewDomainStats = $db->getDomainStats();
+        
+        // Get last sync information
+        $databaseViewLastSync = $db->getLastSyncInfo($_SESSION['user_email'] ?? '');
+        
+        // Get unique registrars for the edit form
+        $databaseViewUniqueRegistrars = $db->getUniqueRegistrars();
+        
+    } catch (Exception $e) {
+        $databaseViewError = "Failed to fetch domains: " . $e->getMessage();
+    }
+}
+
+// Handle sync view
+$syncViewError = null;
+$syncViewLastSync = null;
+$syncViewDomainStats = [];
+
+if ($currentView === 'sync') {
+    // Check if user has configured their API settings
+    if (!userHasSettings()) {
+        $syncViewError = "Please configure API settings first";
+    } else {
+        try {
+            $db = Database::getInstance();
+            $db->createTables(); // Ensure tables exist
+            
+            // Get last sync information
+            $syncViewLastSync = $db->getLastSyncInfo($_SESSION['user_email'] ?? '');
+            
+            // Get domain statistics
+            $syncViewDomainStats = $db->getDomainStats();
+            
+        } catch (Exception $e) {
+            $syncViewError = "Database connection failed: " . $e->getMessage();
+        }
+    }
+}
+
+// Get income and orders stats from API (keeping this for now)
 if (userHasSettings()) {
     $userSettings = getUserSettings();
     if ($userSettings) {
@@ -536,36 +805,7 @@ if (userHasSettings()) {
                 'orders_thisyear_total' => $statsResponse['orders_thisyear_total'] ?? '0'
             ];
         }
-        
-        // Get domain status distribution
-        $domainsResponse = getAllDomains($userSettings['api_url'], $userSettings['api_identifier'], $userSettings['api_secret']);
-        if (isset($domainsResponse['domains']['domain']) && is_array($domainsResponse['domains']['domain'])) {
-            $allDomains = $domainsResponse['domains']['domain'];
-            
-            foreach ($allDomains as $domain) {
-                $status = $domain['status'] ?? 'Unknown';
-                $status = ucfirst(strtolower($status)); // Normalize status
-                
-                if (isset($domainStatusStats[$status])) {
-                    $domainStatusStats[$status]++;
-                } else {
-                    $domainStatusStats['Other']++;
-                }
-            }
-        }
-    } else {
-        $systemStatus[] = [
-            'name' => 'Configuration',
-            'task' => 'API settings not configured',
-            'status' => 'pending'
-        ];
     }
-} else {
-    $systemStatus[] = [
-        'name' => 'Configuration',
-        'task' => 'Please configure API settings first',
-        'status' => 'pending'
-    ];
 }
 ?>
 
@@ -665,12 +905,7 @@ if (userHasSettings()) {
                                     <span class="text-sm <?= $currentView === 'orders' ? 'font-semibold text-gray-900' : 'font-normal' ?>">Orders</span>
                                 </a>
                             </li>
-                            <li>
-                                <a href="?view=domains" class="flex items-center space-x-3 px-3 py-2 <?= $currentView === 'domains' ? 'bg-primary-50 text-primary-700 rounded-lg border-l-4 border-primary-600' : 'text-gray-500 hover:bg-gray-50 rounded-lg transition-colors' ?>">
-                                    <i data-lucide="globe" class="w-4 h-4 <?= $currentView === 'domains' ? 'text-primary-600' : 'text-gray-400' ?>"></i>
-                                    <span class="text-sm <?= $currentView === 'domains' ? 'font-semibold text-gray-900' : 'font-normal' ?>">Domains</span>
-                                </a>
-                            </li>
+
                         </ul>
                     </div>
 
@@ -678,9 +913,9 @@ if (userHasSettings()) {
                         <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">DOMAIN ACTIONS</h3>
                         <ul class="space-y-1">
                             <li>
-                                <a href="sync_interface.php" class="flex items-center space-x-3 px-3 py-2 text-gray-500 hover:bg-gray-50 rounded-lg transition-colors">
-                                    <i data-lucide="refresh-cw" class="w-4 h-4 text-gray-400"></i>
-                                    <span class="text-sm font-normal">Domain Sync</span>
+                                <a href="?view=sync" class="flex items-center space-x-3 px-3 py-2 <?= $currentView === 'sync' ? 'bg-primary-50 text-primary-700 rounded-lg border-l-4 border-primary-600' : 'text-gray-500 hover:bg-gray-50 rounded-lg transition-colors' ?>">
+                                    <i data-lucide="refresh-cw" class="w-4 h-4 <?= $currentView === 'sync' ? 'text-primary-600' : 'text-gray-400' ?>"></i>
+                                    <span class="text-sm <?= $currentView === 'sync' ? 'font-semibold text-gray-900' : 'font-normal' ?>">Domain Sync</span>
                                 </a>
                             </li>
                             <li>
@@ -695,6 +930,40 @@ if (userHasSettings()) {
                                     <span class="text-sm <?= $currentView === 'export' ? 'font-semibold text-gray-900' : 'font-normal' ?>">Export Domains</span>
                                 </a>
                             </li>
+                            <li>
+                                <a href="?view=database_view" class="flex items-center space-x-3 px-3 py-2 <?= $currentView === 'database_view' ? 'bg-primary-50 text-primary-700 rounded-lg border-l-4 border-primary-600' : 'text-gray-500 hover:bg-gray-50 rounded-lg transition-colors' ?>">
+                                    <i data-lucide="database" class="w-4 h-4 <?= $currentView === 'database_view' ? 'text-primary-600' : 'text-gray-400' ?>"></i>
+                                    <span class="text-sm <?= $currentView === 'database_view' ? 'font-semibold text-gray-900' : 'font-normal' ?>">Domains</span>
+                                </a>
+                            </li>
+                        </ul>
+                    </div>
+
+                    <div class="mb-6">
+                        <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">SERVER SETUP</h3>
+                        <ul class="space-y-1">
+                            <li>
+                                <a href="?view=database_setup" class="flex items-center justify-between px-3 py-2 <?= $currentView === 'database_setup' ? 'bg-primary-50 text-primary-700 rounded-lg border-l-4 border-primary-600' : 'text-gray-500 hover:bg-gray-50 rounded-lg transition-colors' ?>">
+                                    <div class="flex items-center space-x-3">
+                                        <i data-lucide="database" class="w-4 h-4 <?= $currentView === 'database_setup' ? 'text-primary-600' : 'text-gray-400' ?>"></i>
+                                        <span class="text-sm <?= $currentView === 'database_setup' ? 'font-semibold text-gray-900' : 'font-normal' ?>">Database Setup</span>
+                                    </div>
+                                    <?php if ($setupStatus['database_setup']): ?>
+                                        <i data-lucide="check-circle" class="w-4 h-4 text-green-500"></i>
+                                    <?php endif; ?>
+                                </a>
+                            </li>
+                            <li>
+                                <a href="?view=create_tables" class="flex items-center justify-between px-3 py-2 <?= $currentView === 'create_tables' ? 'bg-primary-50 text-primary-700 rounded-lg border-l-4 border-primary-600' : 'text-gray-500 hover:bg-gray-50 rounded-lg transition-colors' ?>">
+                                    <div class="flex items-center space-x-3">
+                                        <i data-lucide="table" class="w-4 h-4 <?= $currentView === 'create_tables' ? 'text-primary-600' : 'text-gray-400' ?>"></i>
+                                        <span class="text-sm <?= $currentView === 'create_tables' ? 'font-semibold text-gray-900' : 'font-normal' ?>">Create Tables</span>
+                                    </div>
+                                    <?php if ($setupStatus['tables_created']): ?>
+                                        <i data-lucide="check-circle" class="w-4 h-4 text-green-500"></i>
+                                    <?php endif; ?>
+                                </a>
+                            </li>
                         </ul>
                     </div>
                 </div>
@@ -703,9 +972,14 @@ if (userHasSettings()) {
                     <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">GENERAL</h3>
                     <ul class="space-y-1">
                         <li>
-                            <a href="?view=settings" class="flex items-center space-x-3 px-3 py-2 <?= $currentView === 'settings' ? 'bg-primary-50 text-primary-700 rounded-lg border-l-4 border-primary-600' : 'text-gray-500 hover:bg-gray-50 rounded-lg transition-colors' ?>">
-                                <i data-lucide="settings" class="w-4 h-4 <?= $currentView === 'settings' ? 'text-primary-600' : 'text-gray-400' ?>"></i>
-                                <span class="text-sm <?= $currentView === 'settings' ? 'font-semibold text-gray-900' : 'font-normal' ?>">Settings</span>
+                            <a href="?view=settings" class="flex items-center justify-between px-3 py-2 <?= $currentView === 'settings' ? 'bg-primary-50 text-primary-700 rounded-lg border-l-4 border-primary-600' : 'text-gray-500 hover:bg-gray-50 rounded-lg transition-colors' ?>">
+                                <div class="flex items-center space-x-3">
+                                    <i data-lucide="settings" class="w-4 h-4 <?= $currentView === 'settings' ? 'text-primary-600' : 'text-gray-400' ?>"></i>
+                                    <span class="text-sm <?= $currentView === 'settings' ? 'font-semibold text-gray-900' : 'font-normal' ?>">Settings</span>
+                                </div>
+                                <?php if ($setupStatus['api_configured']): ?>
+                                    <i data-lucide="check-circle" class="w-4 h-4 text-green-500"></i>
+                                <?php endif; ?>
                             </a>
                         </li>
                         <li>
@@ -780,6 +1054,78 @@ if (userHasSettings()) {
                     <p class="text-gray-600">Plan, prioritize, and manage your domains with ease.</p>
                 </div>
 
+                <!-- Setup Progress -->
+                <div id="setupProgressSection" class="bg-white p-6 rounded-xl border border-gray-200 mb-6">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="text-lg font-semibold text-gray-900 flex items-center space-x-2">
+                            <i data-lucide="check-square" class="w-5 h-5 text-primary-600"></i>
+                            <span>Setup Progress</span>
+                        </h3>
+                        <?php if ($completedSteps === $totalSteps && $totalSteps > 0): ?>
+                            <button type="button" id="hideSetupProgress" class="text-gray-500 hover:text-gray-700 transition-colors flex items-center space-x-2">
+                                <i data-lucide="eye-off" class="w-4 h-4"></i>
+                                <span class="text-sm">Hide</span>
+                            </button>
+                        <?php endif; ?>
+                    </div>
+                    
+                    <div class="space-y-3">
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center space-x-3">
+                                <i data-lucide="database" class="w-4 h-4 <?= $setupStatus['database_setup'] ? 'text-green-600' : 'text-gray-400' ?>"></i>
+                                <span class="text-sm font-medium text-gray-900">Database Setup</span>
+                            </div>
+                            <?php if ($setupStatus['database_setup']): ?>
+                                <i data-lucide="check-circle" class="w-4 h-4 text-green-500"></i>
+                            <?php else: ?>
+                                <i data-lucide="circle" class="w-4 h-4 text-gray-300"></i>
+                            <?php endif; ?>
+                        </div>
+                        
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center space-x-3">
+                                <i data-lucide="table" class="w-4 h-4 <?= $setupStatus['tables_created'] ? 'text-green-600' : 'text-gray-400' ?>"></i>
+                                <span class="text-sm font-medium text-gray-900">Database Tables</span>
+                            </div>
+                            <?php if ($setupStatus['tables_created']): ?>
+                                <i data-lucide="check-circle" class="w-4 h-4 text-green-500"></i>
+                            <?php else: ?>
+                                <i data-lucide="circle" class="w-4 h-4 text-gray-300"></i>
+                            <?php endif; ?>
+                        </div>
+                        
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center space-x-3">
+                                <i data-lucide="settings" class="w-4 h-4 <?= $setupStatus['api_configured'] ? 'text-green-600' : 'text-gray-400' ?>"></i>
+                                <span class="text-sm font-medium text-gray-900">API Configuration</span>
+                            </div>
+                            <?php if ($setupStatus['api_configured']): ?>
+                                <i data-lucide="check-circle" class="w-4 h-4 text-green-500"></i>
+                            <?php else: ?>
+                                <i data-lucide="circle" class="w-4 h-4 text-gray-300"></i>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+                    
+                    <div class="mt-4">
+                        <div class="flex items-center justify-between text-sm text-gray-600 mb-2">
+                            <span>Overall Progress</span>
+                            <span><?= $completedSteps ?>/<?= $totalSteps ?> completed</span>
+                        </div>
+                        <div class="w-full bg-gray-200 rounded-full h-2">
+                            <div class="bg-primary-600 h-2 rounded-full transition-all duration-300" style="width: <?= $progressPercentage ?>%"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Show Setup Progress Button (hidden by default) -->
+                <div id="showSetupProgressButton" class="hidden mb-6">
+                    <button type="button" id="showSetupProgress" class="bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-lg font-medium transition-colors flex items-center space-x-2">
+                        <i data-lucide="eye" class="w-4 h-4"></i>
+                        <span>Show Setup Progress</span>
+                    </button>
+                </div>
+
                 <!-- Settings Warning -->
                     <?php if (!$hasSettings || !empty($settingsValidation['missing'])): ?>
                     <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
@@ -829,7 +1175,10 @@ if (userHasSettings()) {
                         <!-- Project Analytics -->
                         <div class="bg-white p-6 rounded-xl border border-gray-200">
                             <div class="flex items-center justify-between mb-6">
-                                <h3 class="text-lg font-semibold text-gray-900">Domain Analytics</h3>
+                                <div>
+                                    <h3 class="text-lg font-semibold text-gray-900">Domain Analytics</h3>
+                                    <p class="text-sm text-gray-500 mt-1"><?= $totalDomains ?> total domains</p>
+                                </div>
                             </div>
                             <div class="space-y-3">
                                 <?php
@@ -2183,6 +2532,840 @@ if (userHasSettings()) {
                      </div>
                  </div>
                  
+                 <?php elseif ($currentView === 'database_setup'): ?>
+                 <!-- Database Setup Content -->
+                 <!-- Page Header -->
+                 <div class="mb-8">
+                     <h1 class="text-2xl font-bold text-gray-900 mb-2">🗄️ Database Setup</h1>
+                     <p class="text-gray-600">Configure MySQL database for domain data storage</p>
+                 </div>
+
+                 <!-- Messages -->
+                 <?php if ($dbMessage): ?>
+                     <div class="mb-6 p-4 rounded-lg <?= $dbMessageType === 'success' ? 'bg-green-50 border border-green-200 text-green-800' : ($dbMessageType === 'warning' ? 'bg-yellow-50 border border-yellow-200 text-yellow-800' : 'bg-red-50 border border-red-200 text-red-800') ?>">
+                         <div class="flex items-center space-x-3">
+                             <span style="font-size: 1.5rem;">
+                                 <?= $dbMessageType === 'success' ? '✅' : ($dbMessageType === 'warning' ? '⚠️' : '❌') ?>
+                             </span>
+                             <div>
+                                 <div class="font-semibold">
+                                     <?= $dbMessageType === 'success' ? 'Success' : ($dbMessageType === 'warning' ? 'Warning' : 'Error') ?>
+                                 </div>
+                                 <div class="text-sm mt-1"><?= htmlspecialchars($dbMessage) ?></div>
+                             </div>
+                         </div>
+                     </div>
+                 <?php endif; ?>
+
+                 <!-- Database Configuration Form -->
+                 <div class="bg-white rounded-xl border border-gray-200 p-6 mb-6">
+                     <div class="flex items-center justify-between mb-4">
+                         <h3 class="text-lg font-semibold text-gray-900 flex items-center space-x-2">
+                             <i data-lucide="database" class="w-5 h-5 text-primary-600"></i>
+                             <span>MySQL Database Configuration</span>
+                         </h3>
+                         <?php if ($setupStatus['database_setup']): ?>
+                             <div class="flex items-center space-x-2 text-green-600">
+                                 <i data-lucide="check-circle" class="w-5 h-5"></i>
+                                 <span class="text-sm font-medium">Completed</span>
+                             </div>
+                         <?php endif; ?>
+                     </div>
+                     
+                     <form method="POST" class="space-y-6">
+                         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                             <div>
+                                 <label for="db_host" class="block text-sm font-medium text-gray-700 mb-2">Database Host *</label>
+                                 <input 
+                                     type="text" 
+                                     name="db_host" 
+                                     id="db_host" 
+                                     value="<?= htmlspecialchars($currentHost) ?>"
+                                     placeholder="localhost"
+                                     class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                                     required
+                                 >
+                                 <p class="text-xs text-gray-500 mt-1">Usually 'localhost' for local installations</p>
+                             </div>
+                             
+                             <div>
+                                 <label for="db_port" class="block text-sm font-medium text-gray-700 mb-2">Database Port *</label>
+                                 <input 
+                                     type="number" 
+                                     name="db_port" 
+                                     id="db_port" 
+                                     value="<?= htmlspecialchars($currentPort) ?>"
+                                     placeholder="3306"
+                                     class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                                     required
+                                 >
+                                 <p class="text-xs text-gray-500 mt-1">Default MySQL port is 3306</p>
+                             </div>
+                         </div>
+                         
+                         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                             <div>
+                                 <label for="db_name" class="block text-sm font-medium text-gray-700 mb-2">Database Name *</label>
+                                 <input 
+                                     type="text" 
+                                     name="db_name" 
+                                     id="db_name" 
+                                     value="<?= htmlspecialchars($currentDatabase) ?>"
+                                     placeholder="domain_tools"
+                                     class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                                     required
+                                 >
+                                 <p class="text-xs text-gray-500 mt-1">Database will be created if it doesn't exist</p>
+                             </div>
+                             
+                             <div>
+                                 <label for="db_user" class="block text-sm font-medium text-gray-700 mb-2">Database Username *</label>
+                                 <input 
+                                     type="text" 
+                                     name="db_user" 
+                                     id="db_user" 
+                                     value="<?= htmlspecialchars($currentUser) ?>"
+                                     placeholder="root"
+                                     class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                                     required
+                                 >
+                                 <p class="text-xs text-gray-500 mt-1">MySQL user with CREATE/DROP privileges</p>
+                             </div>
+                         </div>
+                         
+                         <div>
+                             <label for="db_password" class="block text-sm font-medium text-gray-700 mb-2">Database Password</label>
+                             <input 
+                                 type="password" 
+                                 name="db_password" 
+                                 id="db_password" 
+                                 value="<?= htmlspecialchars($currentPassword) ?>"
+                                 placeholder="Enter database password"
+                                 class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                             >
+                             <p class="text-xs text-gray-500 mt-1">Leave empty if no password is set</p>
+                         </div>
+                         
+                         <div class="flex items-center space-x-4">
+                             <button type="submit" class="bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-lg font-medium transition-colors flex items-center space-x-2">
+                                 <i data-lucide="database" class="w-4 h-4"></i>
+                                 <span>Test & Save Configuration</span>
+                             </button>
+                         </div>
+                     </form>
+                 </div>
+
+                 <!-- Information Section -->
+                 <div class="bg-blue-50 border border-blue-200 rounded-xl p-6 mb-6">
+                     <h3 class="text-lg font-semibold text-blue-900 mb-4 flex items-center space-x-2">
+                         <i data-lucide="info" class="w-5 h-5 text-blue-600"></i>
+                         <span>Database Requirements</span>
+                     </h3>
+                     
+                     <div class="space-y-3 text-sm text-blue-800">
+                         <div class="flex items-start gap-2">
+                             <i data-lucide="check-circle" class="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0"></i>
+                             <div>MySQL 5.7+ or MariaDB 10.2+ with InnoDB support</div>
+                         </div>
+                         <div class="flex items-start gap-2">
+                             <i data-lucide="check-circle" class="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0"></i>
+                             <div>Database user with CREATE, DROP, INSERT, UPDATE, DELETE, and SELECT privileges</div>
+                         </div>
+                         <div class="flex items-start gap-2">
+                             <i data-lucide="check-circle" class="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0"></i>
+                             <div>UTF8MB4 character set support for proper domain name storage</div>
+                         </div>
+                         <div class="flex items-start gap-2">
+                             <i data-lucide="check-circle" class="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0"></i>
+                             <div>PHP PDO MySQL extension enabled</div>
+                         </div>
+                     </div>
+                 </div>
+
+                 <!-- Features Section -->
+                 <div class="bg-green-50 border border-green-200 rounded-xl p-6">
+                     <h3 class="text-lg font-semibold text-green-900 mb-4 flex items-center space-x-2">
+                         <i data-lucide="zap" class="w-5 h-5 text-green-600"></i>
+                         <span>Database Features</span>
+                     </h3>
+                     
+                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                         <div class="space-y-2">
+                             <div class="flex items-center gap-2">
+                                 <i data-lucide="database" class="w-4 h-4 text-green-600"></i>
+                                 <span class="text-sm font-medium text-green-800">Local Domain Storage</span>
+                             </div>
+                             <div class="flex items-center gap-2">
+                                 <i data-lucide="search" class="w-4 h-4 text-green-600"></i>
+                                 <span class="text-sm font-medium text-green-800">Fast Search & Filtering</span>
+                             </div>
+                             <div class="flex items-center gap-2">
+                                 <i data-lucide="refresh-cw" class="w-4 h-4 text-green-600"></i>
+                                 <span class="text-sm font-medium text-green-800">Batch Sync Operations</span>
+                             </div>
+                         </div>
+                         <div class="space-y-2">
+                             <div class="flex items-center gap-2">
+                                 <i data-lucide="bar-chart-3" class="w-4 h-4 text-green-600"></i>
+                                 <span class="text-sm font-medium text-green-800">Domain Statistics</span>
+                             </div>
+                             <div class="flex items-center gap-2">
+                                 <i data-lucide="clock" class="w-4 h-4 text-green-600"></i>
+                                 <span class="text-sm font-medium text-green-800">Sync History Tracking</span>
+                             </div>
+                             <div class="flex items-center gap-2">
+                                 <i data-lucide="shield" class="w-4 h-4 text-green-600"></i>
+                                 <span class="text-sm font-medium text-green-800">Data Integrity</span>
+                             </div>
+                         </div>
+                     </div>
+                 </div>
+                 
+                 <?php elseif ($currentView === 'database_view'): ?>
+                 <!-- Database View Content -->
+                 <!-- Page Header -->
+                 <div class="mb-8">
+                     <h1 class="text-2xl font-bold text-gray-900 mb-2">🌐 Domains Database</h1>
+                     <p class="text-gray-600">View and manage domains from local database</p>
+                 </div>
+
+                 <!-- Error Message -->
+                 <?php if ($databaseViewError): ?>
+                     <div class="mb-6 p-4 rounded-lg bg-red-50 border border-red-200 text-red-800">
+                         <div class="flex items-center space-x-3">
+                             <i data-lucide="alert-circle" class="w-5 h-5 text-red-600"></i>
+                             <div>
+                                 <div class="font-semibold">Database Error</div>
+                                 <div class="text-sm mt-1"><?= htmlspecialchars($databaseViewError) ?></div>
+                             </div>
+                         </div>
+                     </div>
+                 <?php endif; ?>
+
+                 <!-- Sync Status -->
+                 <?php if ($databaseViewLastSync): ?>
+                     <div class="mb-6 p-4 rounded-lg bg-blue-50 border border-blue-200 text-blue-800">
+                         <div class="flex items-center space-x-3">
+                             <i data-lucide="refresh-cw" class="w-5 h-5 text-blue-600"></i>
+                             <div>
+                                 <div class="font-semibold">Last Sync: <?= date('M j, Y g:i A', strtotime($databaseViewLastSync['sync_started'])) ?></div>
+                                 <div class="text-sm mt-1">
+                                     Batch <?= $databaseViewLastSync['batch_number'] ?> - 
+                                     <?= $databaseViewLastSync['domains_processed'] ?> domains processed
+                                     (<?= $databaseViewLastSync['domains_added'] ?> added, <?= $databaseViewLastSync['domains_updated'] ?> updated)
+                                 </div>
+                             </div>
+                         </div>
+                     </div>
+                 <?php endif; ?>
+
+                 <!-- Domain Statistics Cards -->
+                 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                     <div class="bg-primary-600 text-white p-6 rounded-xl">
+                         <div class="flex items-center justify-between mb-4">
+                             <h3 class="text-sm font-medium text-primary-100">Total Domains</h3>
+                             <div class="w-8 h-8 bg-primary-500 rounded-full flex items-center justify-center">
+                                 <i data-lucide="globe" class="w-4 h-4"></i>
+                             </div>
+                         </div>
+                         <div class="text-4xl font-bold"><?= $databaseViewDomainStats['total_domains'] ?? 0 ?></div>
+                     </div>
+
+                     <div class="bg-white p-6 rounded-xl border border-gray-200">
+                         <div class="flex items-center justify-between mb-4">
+                             <h3 class="text-sm font-medium text-gray-500">Active Domains</h3>
+                             <div class="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
+                                 <i data-lucide="check-circle" class="w-4 h-4 text-green-600"></i>
+                             </div>
+                         </div>
+                         <div class="text-4xl font-bold text-gray-900"><?= $databaseViewDomainStats['active_domains'] ?? 0 ?></div>
+                     </div>
+
+                     <div class="bg-white p-6 rounded-xl border border-gray-200">
+                         <div class="flex items-center justify-between mb-4">
+                             <h3 class="text-sm font-medium text-gray-500">Expired Domains</h3>
+                             <div class="w-8 h-8 bg-red-100 rounded-full flex items-center justify-center">
+                                 <i data-lucide="alert-triangle" class="w-4 h-4 text-red-600"></i>
+                             </div>
+                         </div>
+                         <div class="text-4xl font-bold text-gray-900"><?= $databaseViewDomainStats['expired_domains'] ?? 0 ?></div>
+                     </div>
+
+                     <div class="bg-white p-6 rounded-xl border border-gray-200">
+                         <div class="flex items-center justify-between mb-4">
+                             <h3 class="text-sm font-medium text-gray-500">Pending Domains</h3>
+                             <div class="w-8 h-8 bg-yellow-100 rounded-full flex items-center justify-center">
+                                 <i data-lucide="clock" class="w-4 h-4 text-yellow-600"></i>
+                             </div>
+                         </div>
+                         <div class="text-4xl font-bold text-gray-900"><?= $databaseViewDomainStats['pending_domains'] ?? 0 ?></div>
+                     </div>
+                 </div>
+
+                 <!-- Search and Filter Controls -->
+                 <div class="bg-white rounded-xl border border-gray-200 p-6 mb-6">
+                     <form method="GET" class="flex flex-wrap items-end justify-end gap-6">
+                         <input type="hidden" name="view" value="database_view">
+                         <div class="flex items-end gap-2">
+                             <div class="w-64">
+                                 <label for="search" class="block text-sm font-medium text-gray-700 mb-2">Search Domains</label>
+                                 <input 
+                                     type="text" 
+                                     name="search" 
+                                     id="search" 
+                                     value="<?= htmlspecialchars($dbSearch ?? '') ?>"
+                                     placeholder="Enter domain name..."
+                                     class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                                 >
+                             </div>
+                             <button type="submit" class="bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-lg font-medium transition-colors flex items-center space-x-2 h-10">
+                                 <i data-lucide="search" class="w-4 h-4"></i>
+                                 <span>Search</span>
+                             </button>
+                         </div>
+                         
+                         <div class="flex-1"></div>
+                         
+                         <div class="w-36">
+                             <label for="status" class="block text-sm font-medium text-gray-700 mb-2">Status Filter</label>
+                             <select name="status" id="status" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent">
+                                 <option value="">All Statuses</option>
+                                 <option value="Active" <?= ($dbStatus ?? '') === 'Active' ? 'selected' : '' ?>>Active</option>
+                                 <option value="Pending" <?= ($dbStatus ?? '') === 'Pending' ? 'selected' : '' ?>>Pending</option>
+                                 <option value="Expired" <?= ($dbStatus ?? '') === 'Expired' ? 'selected' : '' ?>>Expired</option>
+                                 <option value="Suspended" <?= ($dbStatus ?? '') === 'Suspended' ? 'selected' : '' ?>>Suspended</option>
+                                 <option value="Cancelled" <?= ($dbStatus ?? '') === 'Cancelled' ? 'selected' : '' ?>>Cancelled</option>
+                                 <option value="Transferred Away" <?= ($dbStatus ?? '') === 'Transferred Away' ? 'selected' : '' ?>>Transferred Away</option>
+                             </select>
+                         </div>
+                         
+                         <div class="w-44">
+                             <label for="registrar" class="block text-sm font-medium text-gray-700 mb-2">Registrar Filter</label>
+                             <select name="registrar" id="registrar" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent">
+                                 <option value="">All Registrars</option>
+                                 <?php if (isset($databaseViewUniqueRegistrars) && !empty($databaseViewUniqueRegistrars)): ?>
+                                     <?php foreach ($databaseViewUniqueRegistrars as $registrar): ?>
+                                         <option value="<?= htmlspecialchars($registrar) ?>" <?= ($dbRegistrar ?? '') === $registrar ? 'selected' : '' ?>><?= htmlspecialchars($registrar) ?></option>
+                                     <?php endforeach; ?>
+                                 <?php endif; ?>
+                             </select>
+                         </div>
+                         
+                         <div class="w-40">
+                             <label for="order_by" class="block text-sm font-medium text-gray-700 mb-2">Sort By</label>
+                             <select name="order_by" id="order_by" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent">
+                                 <option value="domain_name" <?= ($dbOrderBy ?? '') === 'domain_name' ? 'selected' : '' ?>>Domain Name</option>
+                                 <option value="status" <?= ($dbOrderBy ?? '') === 'status' ? 'selected' : '' ?>>Status</option>
+                                 <option value="registrar" <?= ($dbOrderBy ?? '') === 'registrar' ? 'selected' : '' ?>>Registrar</option>
+                                 <option value="expiry_date" <?= ($dbOrderBy ?? '') === 'expiry_date' ? 'selected' : '' ?>>Expiry Date</option>
+                                 <option value="last_synced" <?= ($dbOrderBy ?? '') === 'last_synced' ? 'selected' : '' ?>>Last Synced</option>
+                             </select>
+                         </div>
+                         
+                         <div class="w-36">
+                             <label for="order_dir" class="block text-sm font-medium text-gray-700 mb-2">Sort Direction</label>
+                             <select name="order_dir" id="order_dir" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent">
+                                 <option value="ASC" <?= ($dbOrderDir ?? '') === 'ASC' ? 'selected' : '' ?>>Ascending</option>
+                                 <option value="DESC" <?= ($dbOrderDir ?? '') === 'DESC' ? 'selected' : '' ?>>Descending</option>
+                             </select>
+                         </div>
+                         
+                         <div>
+                             <a href="?view=database_view" class="bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 px-4 py-2 rounded-lg font-medium transition-colors flex items-center space-x-2 h-10">
+                                 <i data-lucide="x-circle" class="w-4 h-4"></i>
+                                 <span>Clear Filters</span>
+                             </a>
+                         </div>
+                     </form>
+                 </div>
+
+                 <!-- Domains Table -->
+                 <div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                     <div class="px-6 py-4 border-b border-gray-200">
+                         <div class="flex items-center justify-between">
+                             <h3 class="text-lg font-semibold text-gray-900">Domains (<?= $databaseViewTotalDomains ?> total)</h3>
+                             <div class="flex items-center space-x-4">
+                                 <button type="button" id="addDomainBtn" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-medium transition-colors flex items-center space-x-2">
+                                     <i data-lucide="plus" class="w-4 h-4"></i>
+                                     <span>Add Domain</span>
+                                 </button>
+                                 <a href="?view=export" class="bg-white hover:bg-gray-50 text-gray-700 border border-gray-300 px-4 py-2 rounded-lg font-medium transition-colors flex items-center space-x-2">
+                                     <i data-lucide="download" class="w-4 h-4"></i>
+                                     <span>Export CSV</span>
+                                 </a>
+                                 <a href="?view=sync" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition-colors flex items-center space-x-2">
+                                     <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+                                     <span>Sync Data</span>
+                                 </a>
+                             </div>
+                         </div>
+                     </div>
+                     
+                     <?php if (!empty($databaseViewDomains)): ?>
+                         <div class="overflow-x-auto">
+                             <table class="min-w-full divide-y divide-gray-200">
+                                 <thead class="bg-gray-50">
+                                     <tr>
+                                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Domain Name</th>
+                                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Registrar</th>
+                                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Expiry Date</th>
+                                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nameservers</th>
+                                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Last Synced</th>
+                                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                                     </tr>
+                                 </thead>
+                                 <tbody class="bg-white divide-y divide-gray-200">
+                                     <?php foreach ($databaseViewDomains as $domain): ?>
+                                         <tr class="hover:bg-gray-50">
+                                             <td class="px-6 py-4 whitespace-nowrap">
+                                                 <div class="flex items-center">
+                                                     <div class="w-8 h-8 bg-primary-100 rounded-lg flex items-center justify-center mr-3">
+                                                         <i data-lucide="globe" class="w-4 h-4 text-primary-600"></i>
+                                                     </div>
+                                                     <div class="text-sm font-medium text-gray-900">
+                                                         <?= htmlspecialchars($domain['domain_name']) ?>
+                                                     </div>
+                                                 </div>
+                                             </td>
+                                             <td class="px-6 py-4 whitespace-nowrap">
+                                                 <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                                     <?= htmlspecialchars($domain['registrar'] ?? 'Unknown') ?>
+                                                 </span>
+                                             </td>
+                                             <td class="px-6 py-4 whitespace-nowrap">
+                                                 <?php
+                                                 $status = $domain['status'] ?? 'Unknown';
+                                                 $statusColors = [
+                                                     'Active' => 'bg-green-100 text-green-800',
+                                                     'Pending' => 'bg-yellow-100 text-yellow-800',
+                                                     'Suspended' => 'bg-red-100 text-red-800',
+                                                     'Cancelled' => 'bg-gray-100 text-gray-800',
+                                                     'Expired' => 'bg-red-100 text-red-800'
+                                                 ];
+                                                 $statusColor = $statusColors[$status] ?? 'bg-gray-100 text-gray-800';
+                                                 ?>
+                                                 <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium <?= $statusColor ?>">
+                                                     <?= htmlspecialchars($status) ?>
+                                                 </span>
+                                             </td>
+                                             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                                 <?php 
+                                                 if (!empty($domain['expiry_date'])) {
+                                                     echo date('M j, Y', strtotime($domain['expiry_date']));
+                                                 } else {
+                                                     echo 'N/A';
+                                                 }
+                                                 ?>
+                                             </td>
+                                             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                                 <?php if (!empty($domain['ns1'])): ?>
+                                                     <div class="text-xs">
+                                                         <div><?= htmlspecialchars($domain['ns1']) ?></div>
+                                                         <?php if (!empty($domain['ns2'])): ?>
+                                                             <div class="text-gray-500"><?= htmlspecialchars($domain['ns2']) ?></div>
+                                                         <?php endif; ?>
+                                                     </div>
+                                                 <?php else: ?>
+                                                     <span class="text-gray-400">Not available</span>
+                                                 <?php endif; ?>
+                                             </td>
+                                             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                                 <?= date('M j, Y g:i A', strtotime($domain['last_synced'])) ?>
+                                             </td>
+                                             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                                 <div class="flex items-center space-x-2">
+                                                     <button type="button" 
+                                                             class="edit-domain-btn inline-flex items-center px-2 py-1 text-xs font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 transition-colors"
+                                                             data-domain-id="<?= htmlspecialchars($domain['domain_id'] ?? '') ?>"
+                                                             data-domain-name="<?= htmlspecialchars($domain['domain_name']) ?>"
+                                                             data-registrar="<?= htmlspecialchars($domain['registrar'] ?? 'Unknown') ?>"
+                                                             data-status="<?= htmlspecialchars($domain['status'] ?? 'Unknown') ?>"
+                                                             data-expiry-date="<?= htmlspecialchars($domain['expiry_date'] ?? '') ?>"
+                                                             data-nameservers="<?= htmlspecialchars(($domain['ns1'] ?? '') . ($domain['ns2'] ? ', ' . $domain['ns2'] : '') . ($domain['ns3'] ? ', ' . $domain['ns3'] : '') . ($domain['ns4'] ? ', ' . $domain['ns4'] : '') . ($domain['ns5'] ? ', ' . $domain['ns5'] : '')) ?>">
+                                                         <i data-lucide="edit-3" class="w-3 h-3 mr-1"></i>
+                                                         Edit
+                                                     </button>
+                                                     <button type="button" 
+                                                             class="delete-domain-btn inline-flex items-center px-2 py-1 text-xs font-medium text-red-700 bg-red-100 rounded-md hover:bg-red-200 transition-colors"
+                                                             data-domain-id="<?= htmlspecialchars($domain['domain_id'] ?? '') ?>"
+                                                             data-domain-name="<?= htmlspecialchars($domain['domain_name']) ?>">
+                                                         <i data-lucide="trash-2" class="w-3 h-3 mr-1"></i>
+                                                         Delete
+                                                     </button>
+                                                 </div>
+                                             </td>
+                                         </tr>
+                                     <?php endforeach; ?>
+                                 </tbody>
+                             </table>
+                         </div>
+                         
+                         <!-- Pagination -->
+                         <?php 
+                         $dbTotalPages = ceil($databaseViewTotalDomains / $dbPerPage);
+                         $dbOffset = ($dbPage - 1) * $dbPerPage;
+                         ?>
+                         <?php if ($dbTotalPages > 1): ?>
+                             <div class="px-6 py-4 border-t border-gray-200 bg-gray-50">
+                                 <div class="flex items-center justify-between">
+                                     <div class="text-sm text-gray-700">
+                                         Showing <?= $dbOffset + 1 ?> to <?= min($dbOffset + $dbPerPage, $databaseViewTotalDomains) ?> of <?= $databaseViewTotalDomains ?> domains
+                                     </div>
+                                     <div class="flex items-center space-x-2">
+                                         <!-- Previous Page -->
+                                         <?php if ($dbPage > 1): ?>
+                                             <a href="?view=database_view&page=<?= $dbPage - 1 ?>&search=<?= urlencode($dbSearch ?? '') ?>&status=<?= urlencode($dbStatus ?? '') ?>&registrar=<?= urlencode($dbRegistrar ?? '') ?>&order_by=<?= urlencode($dbOrderBy ?? '') ?>&order_dir=<?= urlencode($dbOrderDir ?? '') ?>" 
+                                                class="px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 hover:text-gray-700 transition-colors">
+                                                 Previous
+                                             </a>
+                                         <?php else: ?>
+                                             <span class="px-3 py-2 text-sm font-medium text-gray-300 bg-gray-100 border border-gray-200 rounded-lg cursor-not-allowed">
+                                                 Previous
+                                             </span>
+                                         <?php endif; ?>
+                                         
+                                         <!-- Page Numbers -->
+                                         <?php
+                                         // Always show first page
+                                         if ($dbPage == 1): ?>
+                                             <span class="px-3 py-2 text-sm font-medium text-white bg-primary-600 border border-primary-600 rounded-lg">1</span>
+                                         <?php else: ?>
+                                             <a href="?view=database_view&page=1&search=<?= urlencode($dbSearch ?? '') ?>&status=<?= urlencode($dbStatus ?? '') ?>&registrar=<?= urlencode($dbRegistrar ?? '') ?>&order_by=<?= urlencode($dbOrderBy ?? '') ?>&order_dir=<?= urlencode($dbOrderDir ?? '') ?>" class="px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 hover:text-gray-700 transition-colors">1</a>
+                                         <?php endif; ?>
+
+                                         <?php if ($dbPage > 4): ?>
+                                             <span class="px-3 py-2 text-sm font-medium text-gray-400">...</span>
+                                         <?php endif; ?>
+
+                                         <?php
+                                         // Show 2 pages before and after current page
+                                         for ($i = max(2, $dbPage - 2); $i <= min($dbTotalPages - 1, $dbPage + 2); $i++):
+                                             if ($i == 1 || $i == $dbTotalPages) continue;
+                                         ?>
+                                             <?php if ($i == $dbPage): ?>
+                                                 <span class="px-3 py-2 text-sm font-medium text-white bg-primary-600 border border-primary-600 rounded-lg"><?= $i ?></span>
+                                             <?php else: ?>
+                                                 <a href="?view=database_view&page=<?= $i ?>&search=<?= urlencode($dbSearch ?? '') ?>&status=<?= urlencode($dbStatus ?? '') ?>&registrar=<?= urlencode($dbRegistrar ?? '') ?>&order_by=<?= urlencode($dbOrderBy ?? '') ?>&order_dir=<?= urlencode($dbOrderDir ?? '') ?>" class="px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 hover:text-gray-700 transition-colors"><?= $i ?></a>
+                                             <?php endif; ?>
+                                         <?php endfor; ?>
+
+                                         <?php if ($dbPage < $dbTotalPages - 3): ?>
+                                             <span class="px-3 py-2 text-sm font-medium text-gray-400">...</span>
+                                         <?php endif; ?>
+
+                                         <?php if ($dbTotalPages > 1): ?>
+                                             <?php if ($dbPage == $dbTotalPages): ?>
+                                                 <span class="px-3 py-2 text-sm font-medium text-white bg-primary-600 border border-primary-600 rounded-lg"><?= $dbTotalPages ?></span>
+                                             <?php else: ?>
+                                                 <a href="?view=database_view&page=<?= $dbTotalPages ?>&search=<?= urlencode($dbSearch ?? '') ?>&status=<?= urlencode($dbStatus ?? '') ?>&registrar=<?= urlencode($dbRegistrar ?? '') ?>&order_by=<?= urlencode($dbOrderBy ?? '') ?>&order_dir=<?= urlencode($dbOrderDir ?? '') ?>" class="px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 hover:text-gray-700 transition-colors"><?= $dbTotalPages ?></a>
+                                             <?php endif; ?>
+                                         <?php endif; ?>
+
+                                         <!-- Next Page -->
+                                         <?php if ($dbPage < $dbTotalPages): ?>
+                                             <a href="?view=database_view&page=<?= $dbPage + 1 ?>&search=<?= urlencode($dbSearch ?? '') ?>&status=<?= urlencode($dbStatus ?? '') ?>&registrar=<?= urlencode($dbRegistrar ?? '') ?>&order_by=<?= urlencode($dbOrderBy ?? '') ?>&order_dir=<?= urlencode($dbOrderDir ?? '') ?>" 
+                                                class="px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 hover:text-gray-700 transition-colors">
+                                                 Next
+                                             </a>
+                                         <?php else: ?>
+                                             <span class="px-3 py-2 text-sm font-medium text-gray-300 bg-gray-100 border border-gray-200 rounded-lg cursor-not-allowed">
+                                                 Next
+                                             </span>
+                                         <?php endif; ?>
+                                     </div>
+                                 </div>
+                             </div>
+                         <?php endif; ?>
+                     <?php else: ?>
+                         <div class="px-6 py-12 text-center">
+                             <div class="text-gray-400 mb-4">
+                                 <i data-lucide="database" class="w-12 h-12 mx-auto"></i>
+                             </div>
+                             <h3 class="text-lg font-medium text-gray-900 mb-2">No domains found</h3>
+                             <p class="text-gray-500 mb-4">
+                                 <?php if (!empty($dbSearch) || !empty($dbStatus)): ?>
+                                     No domains match your current filters. Try adjusting your search criteria.
+                                 <?php else: ?>
+                                     No domains have been synced to the database yet.
+                                 <?php endif; ?>
+                             </p>
+                             <?php if (empty($dbSearch) && empty($dbStatus)): ?>
+                                 <a href="domain_sync.php" class="bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-lg font-medium transition-colors flex items-center space-x-2 inline-flex">
+                                     <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+                                     <span>Sync Domains</span>
+                                 </a>
+                             <?php else: ?>
+                                 <a href="?view=database_view" class="bg-white hover:bg-gray-50 text-gray-700 border border-gray-300 px-4 py-2 rounded-lg font-medium transition-colors flex items-center space-x-2 inline-flex">
+                                     <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+                                     <span>Clear Filters</span>
+                                 </a>
+                             <?php endif; ?>
+                         </div>
+                     <?php endif; ?>
+                 </div>
+                 
+                 <?php elseif ($currentView === 'sync'): ?>
+                 <!-- Sync View Content -->
+                 <!-- Page Header -->
+                 <div class="mb-8">
+                     <h1 class="text-2xl font-bold text-gray-900 mb-2">🔄 Domain Sync Interface</h1>
+                     <p class="text-gray-600">Sync domain data from WHMCS API to local database</p>
+                 </div>
+
+                 <!-- Error Message -->
+                 <?php if ($syncViewError): ?>
+                     <div class="mb-6 p-4 rounded-lg bg-red-50 border border-red-200 text-red-800">
+                         <div class="flex items-center space-x-3">
+                             <i data-lucide="alert-circle" class="w-5 h-5 text-red-600"></i>
+                             <div>
+                                 <div class="font-semibold">Configuration Error</div>
+                                 <div class="text-sm mt-1"><?= htmlspecialchars($syncViewError) ?></div>
+                             </div>
+                         </div>
+                     </div>
+                 <?php endif; ?>
+
+                 <!-- Sync Status -->
+                 <?php if ($syncViewLastSync): ?>
+                     <div class="mb-6 p-4 rounded-lg bg-blue-50 border border-blue-200 text-blue-800">
+                         <div class="flex items-center space-x-3">
+                             <i data-lucide="refresh-cw" class="w-5 h-5 text-blue-600"></i>
+                             <div>
+                                 <div class="font-semibold">Last Sync: <?= date('M j, Y g:i A', strtotime($syncViewLastSync['sync_started'])) ?></div>
+                                 <div class="text-sm mt-1">
+                                     Batch <?= $syncViewLastSync['batch_number'] ?> - 
+                                     <?= $syncViewLastSync['domains_processed'] ?> domains processed
+                                     (<?= $syncViewLastSync['domains_added'] ?> added, <?= $syncViewLastSync['domains_updated'] ?> updated)
+                                 </div>
+                             </div>
+                         </div>
+                     </div>
+                 <?php endif; ?>
+
+                 <!-- Main Card -->
+                 <div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                     <div class="px-6 py-4 border-b border-gray-200">
+                         <h2 class="text-lg font-semibold text-gray-900">Sync Controls</h2>
+                     </div>
+                     <div class="p-6">
+                         <!-- Sync Configuration -->
+                         <div class="bg-white rounded-xl border border-gray-200 p-6 mb-6">
+                             <h3 class="text-lg font-semibold text-gray-900 mb-4">Sync Configuration</h3>
+                             
+                             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                 <div>
+                                     <label for="batch_number" class="block text-sm font-medium text-gray-700 mb-2">Batch Number</label>
+                                     <input 
+                                         type="number" 
+                                         name="batch_number" 
+                                         id="batch_number" 
+                                         class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                                         min="1" 
+                                         value="1"
+                                         required
+                                     >
+                                     <div class="text-xs text-gray-500 mt-1">Specify which batch of domains to sync (10 domains per batch)</div>
+                                 </div>
+                                 
+                                 <div>
+                                     <label for="batch_size" class="block text-sm font-medium text-gray-700 mb-2">Batch Size</label>
+                                     <input 
+                                         type="number" 
+                                         name="batch_size" 
+                                         id="batch_size" 
+                                         class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                                         min="5" 
+                                         max="50"
+                                         value="10"
+                                         required
+                                     >
+                                     <div class="text-xs text-gray-500 mt-1">Number of domains to fetch per API call (5-50, recommended: 10)</div>
+                                 </div>
+                             </div>
+                             
+                             <div class="mt-6">
+                                 <button type="button" id="startSync" class="inline-flex items-center px-4 py-2 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 transition-colors">
+                                     <i data-lucide="refresh-cw" class="w-4 h-4 mr-2"></i>
+                                     Start Sync
+                                 </button>
+                                 <button type="button" id="stopSync" class="inline-flex items-center px-4 py-2 bg-gray-600 text-white font-medium rounded-lg hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 transition-colors ml-4" style="display: none;">
+                                     <i data-lucide="square" class="w-4 h-4 mr-2"></i>
+                                     Stop Sync
+                                 </button>
+                             </div>
+                         </div>
+
+                         <!-- Sync Progress -->
+                         <div id="syncProgress" class="bg-white rounded-xl border border-gray-200 p-6 mb-6" style="display: none;">
+                             <h3 class="text-lg font-semibold text-gray-900 mb-4">Sync Progress</h3>
+                             
+                             <div class="space-y-4">
+                                 <div class="flex items-center justify-between">
+                                     <span class="text-sm font-medium text-gray-700">Status:</span>
+                                     <span id="syncStatus" class="text-sm font-medium text-blue-600">Initializing...</span>
+                                 </div>
+                                 
+                                 <div class="flex items-center justify-between">
+                                     <span class="text-sm font-medium text-gray-700">Domains Found:</span>
+                                     <span id="domainsFound" class="text-sm font-medium text-gray-900">0</span>
+                                 </div>
+                                 
+                                 <div class="flex items-center justify-between">
+                                     <span class="text-sm font-medium text-gray-700">Domains Processed:</span>
+                                     <span id="domainsProcessed" class="text-sm font-medium text-gray-900">0</span>
+                                 </div>
+                                 
+                                 <div class="flex items-center justify-between">
+                                     <span class="flex items-center space-x-2">
+                                         <span class="text-sm font-medium text-gray-700">Domains Added:</span>
+                                         <span id="domainsAdded" class="text-sm font-medium text-green-600">0</span>
+                                     </span>
+                                 </div>
+                                 
+                                 <div class="flex items-center justify-between">
+                                     <span class="text-sm font-medium text-gray-700">Domains Updated:</span>
+                                     <span id="domainsUpdated" class="text-sm font-medium text-blue-600">0</span>
+                                 </div>
+                                 
+                                 <div class="flex items-center justify-between">
+                                     <span class="text-sm font-medium text-gray-700">Errors:</span>
+                                     <span id="syncErrors" class="text-sm font-medium text-red-600">0</span>
+                                 </div>
+                             </div>
+                             
+                             <div class="mt-4">
+                                 <div class="w-full bg-gray-200 rounded-full h-2">
+                                     <div id="progressBar" class="bg-primary-600 h-2 rounded-full transition-all duration-300" style="width: 0%"></div>
+                                 </div>
+                             </div>
+                         </div>
+
+                         <!-- Sync Log -->
+                         <div id="syncLog" class="bg-white rounded-xl border border-gray-200 p-6 mb-6" style="display: none;">
+                             <h3 class="text-lg font-semibold text-gray-900 mb-4">Sync Log</h3>
+                             <div id="logContent" class="bg-gray-50 rounded-lg p-4 max-h-64 overflow-y-auto text-sm font-mono">
+                                 <!-- Log messages will be added here -->
+                             </div>
+                         </div>
+
+                         <!-- Action Buttons -->
+                         <div class="flex items-center space-x-4">
+                             <a href="?view=database_view" class="inline-flex items-center px-4 py-2 bg-gray-600 text-white font-medium rounded-lg hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 transition-colors">
+                                 <i data-lucide="database" class="w-4 h-4 mr-2"></i>
+                                 View Database
+                             </a>
+                             <a href="?view=export" class="inline-flex items-center px-4 py-2 bg-gray-600 text-white font-medium rounded-lg hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 transition-colors">
+                                 <i data-lucide="download" class="w-4 h-4 mr-2"></i>
+                                 Export CSV
+                             </a>
+                             <button type="button" id="clearOldData" class="inline-flex items-center px-4 py-2 bg-red-600 text-white font-medium rounded-lg hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition-colors">
+                                 <i data-lucide="trash-2" class="w-4 h-4 mr-2"></i>
+                                 Clear Old Data
+                             </button>
+                         </div>
+                     </div>
+                 </div>
+                 
+                 <?php elseif ($currentView === 'create_tables'): ?>
+                 <!-- Create Tables Content -->
+                 <!-- Page Header -->
+                 <div class="mb-8">
+                     <div class="flex items-center justify-between">
+                         <div>
+                             <h1 class="text-2xl font-bold text-gray-900 mb-2">🗄️ Create Database Tables</h1>
+                             <p class="text-gray-600">Set up the required database tables for domain management</p>
+                         </div>
+                         <?php if ($setupStatus['tables_created']): ?>
+                             <div class="flex items-center space-x-2 text-green-600 bg-green-50 px-4 py-2 rounded-lg">
+                                 <i data-lucide="check-circle" class="w-5 h-5"></i>
+                                 <span class="font-medium">Tables Created</span>
+                             </div>
+                         <?php endif; ?>
+                     </div>
+                 </div>
+
+                 <!-- Messages -->
+                 <?php if ($createTablesMessage): ?>
+                     <div class="mb-6 p-4 rounded-lg <?= $createTablesMessageType === 'success' ? 'bg-green-50 border border-green-200 text-green-800' : 'bg-red-50 border border-red-200 text-red-800' ?>">
+                         <div class="flex items-center space-x-3">
+                             <span style="font-size: 1.5rem;">
+                                 <?= $createTablesMessageType === 'success' ? '✅' : '❌' ?>
+                             </span>
+                             <div>
+                                 <div class="font-semibold">
+                                     <?= $createTablesMessageType === 'success' ? 'Success' : 'Error' ?>
+                                 </div>
+                                 <div class="text-sm mt-1"><?= htmlspecialchars($createTablesMessage) ?></div>
+                             </div>
+                         </div>
+                     </div>
+                 <?php endif; ?>
+
+                 <!-- Information Section -->
+                 <div class="bg-blue-50 border border-blue-200 rounded-xl p-6 mb-6">
+                     <h3 class="text-lg font-semibold text-blue-900 mb-4 flex items-center space-x-2">
+                         <i data-lucide="info" class="w-5 h-5 text-blue-600"></i>
+                         <span>Database Tables</span>
+                     </h3>
+                     
+                     <div class="space-y-3 text-sm text-blue-800">
+                         <div class="flex items-start gap-2">
+                             <i data-lucide="database" class="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0"></i>
+                             <div><strong>domains</strong> - Main domain information storage</div>
+                         </div>
+                         <div class="flex items-start gap-2">
+                             <i data-lucide="server" class="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0"></i>
+                             <div><strong>domain_nameservers</strong> - Nameserver configuration for domains</div>
+                         </div>
+                         <div class="flex items-start gap-2">
+                             <i data-lucide="activity" class="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0"></i>
+                             <div><strong>sync_logs</strong> - Sync operation history and statistics</div>
+                         </div>
+                     </div>
+                 </div>
+
+                 <!-- Next Steps -->
+                 <div class="bg-green-50 border border-green-200 rounded-xl p-6 mb-6">
+                     <h3 class="text-lg font-semibold text-green-900 mb-4 flex items-center space-x-2">
+                         <i data-lucide="arrow-right" class="w-5 h-5 text-green-600"></i>
+                         <span>Next Steps</span>
+                     </h3>
+                     
+                     <div class="space-y-3">
+                         <div class="flex items-center gap-3">
+                             <i data-lucide="arrow-right" class="w-4 h-4 text-green-600"></i>
+                             <a href="sync_interface.php" class="text-green-800 hover:text-green-900 font-medium">
+                                 Sync Interface - Import domain data from WHMCS
+                             </a>
+                         </div>
+                         <div class="flex items-center gap-3">
+                             <i data-lucide="arrow-right" class="w-4 h-4 text-green-600"></i>
+                             <a href="?view=domains" class="text-green-800 hover:text-green-900 font-medium">
+                                 View Database - See imported domains
+                             </a>
+                         </div>
+                         <div class="flex items-center gap-3">
+                             <i data-lucide="arrow-right" class="w-4 h-4 text-green-600"></i>
+                             <a href="test_db_connection.php" class="text-green-800 hover:text-green-900 font-medium">
+                                 Test Database Connection - Verify setup
+                             </a>
+                         </div>
+                     </div>
+                 </div>
+
+                 <!-- Action Buttons -->
+                 <div class="flex items-center space-x-4">
+                     <a href="?view=dashboard" class="bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-lg font-medium transition-colors flex items-center space-x-2">
+                         <i data-lucide="home" class="w-4 h-4"></i>
+                         <span>Go to Dashboard</span>
+                     </a>
+                     <a href="sync_interface.php" class="bg-white hover:bg-gray-50 text-gray-700 border border-gray-300 px-4 py-2 rounded-lg font-medium transition-colors flex items-center space-x-2">
+                         <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+                         <span>Start Domain Sync</span>
+                     </a>
+                 </div>
+                 
                  <?php endif; ?>
              </main>
          </div>
@@ -2195,8 +3378,238 @@ if (userHasSettings()) {
         // Initialize Lucide icons
         lucide.createIcons();
 
-                // Search now uses server-side filtering via form submission
+        // Setup Progress Hide/Show functionality
+        document.addEventListener('DOMContentLoaded', function() {
+            const setupProgressSection = document.getElementById('setupProgressSection');
+            const showSetupProgressButton = document.getElementById('showSetupProgressButton');
+            const hideSetupProgressButton = document.getElementById('hideSetupProgress');
+            const showSetupProgressButton2 = document.getElementById('showSetupProgress');
+            
+            // Check if setup progress was previously hidden
+            const isHidden = localStorage.getItem('setupProgressHidden') === 'true';
+            
+            if (isHidden && setupProgressSection) {
+                setupProgressSection.style.display = 'none';
+                if (showSetupProgressButton) {
+                    showSetupProgressButton.classList.remove('hidden');
+                }
+            }
+            
+            // Hide setup progress
+            if (hideSetupProgressButton) {
+                hideSetupProgressButton.addEventListener('click', function() {
+                    if (setupProgressSection) {
+                        setupProgressSection.style.display = 'none';
+                        localStorage.setItem('setupProgressHidden', 'true');
+                    }
+                    if (showSetupProgressButton) {
+                        showSetupProgressButton.classList.remove('hidden');
+                    }
+                });
+            }
+            
+            // Show setup progress
+            if (showSetupProgressButton2) {
+                showSetupProgressButton2.addEventListener('click', function() {
+                    if (setupProgressSection) {
+                        setupProgressSection.style.display = 'block';
+                        localStorage.setItem('setupProgressHidden', 'false');
+                    }
+                    if (showSetupProgressButton) {
+                        showSetupProgressButton.classList.add('hidden');
+                    }
+                });
+            }
+        });
+
+        // Search now uses server-side filtering via form submission
         console.log('Domain search and filters are now server-side powered');
+        
+        // Sync functionality
+        let syncInProgress = false;
+        let currentLogId = null;
+        
+        // Start sync button
+        document.getElementById('startSync')?.addEventListener('click', function() {
+            if (syncInProgress) return;
+            
+            const batchNumber = document.getElementById('batch_number')?.value;
+            const batchSize = document.getElementById('batch_size')?.value;
+            
+            if (batchNumber && batchSize) {
+                startSync(batchNumber, batchSize);
+            }
+        });
+        
+        // Stop sync button
+        document.getElementById('stopSync')?.addEventListener('click', function() {
+            if (!syncInProgress) return;
+            
+            stopSync();
+        });
+        
+        // Clear old data button
+        document.getElementById('clearOldData')?.addEventListener('click', function() {
+            if (confirm('Are you sure you want to clear old data? This will remove domains that haven\'t been synced in the last 30 days.')) {
+                clearOldData();
+            }
+        });
+        
+        function startSync(batchNumber, batchSize) {
+            syncInProgress = true;
+            const startSyncBtn = document.getElementById('startSync');
+            const stopSyncBtn = document.getElementById('stopSync');
+            const syncProgress = document.getElementById('syncProgress');
+            const syncLog = document.getElementById('syncLog');
+            
+            if (startSyncBtn) startSyncBtn.style.display = 'none';
+            if (stopSyncBtn) stopSyncBtn.style.display = 'inline-flex';
+            if (syncProgress) syncProgress.style.display = 'block';
+            if (syncLog) syncLog.style.display = 'block';
+            
+            // Reset progress
+            resetProgress();
+            addLogMessage('Starting sync for batch ' + batchNumber + '...');
+            
+            // Make AJAX request to start sync using ultra-fast endpoint
+            fetch('ultra_simple_sync.php', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                body: 'batch_number=' + batchNumber + '&batch_size=' + batchSize
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    currentLogId = data.log_id;
+                    updateProgress(data.data);
+                    addLogMessage('Batch ' + batchNumber + ' completed successfully!');
+                    
+                    // Show batch information
+                    if (data.data.total_domains && data.data.batch_start && data.data.batch_end) {
+                        addLogMessage('Processed domains ' + data.data.batch_start + '-' + data.data.batch_end + ' of ' + data.data.total_domains);
+                    }
+                    
+                    addLogMessage('Domains in batch: ' + data.data.domains_found);
+                    addLogMessage('Domains processed: ' + data.data.domains_processed);
+                    addLogMessage('Domains added: ' + data.data.domains_added);
+                    addLogMessage('Domains updated: ' + data.data.domains_updated);
+                    
+                    if (data.data.errors > 0) {
+                        addLogMessage('Errors: ' + data.data.errors, 'error');
+                    }
+                    
+                    // Suggest next batch if there are more domains
+                    if (data.data.total_domains && data.data.batch_end < data.data.total_domains) {
+                        const nextBatch = parseInt(batchNumber) + 1;
+                        addLogMessage('💡 Tip: Run batch ' + nextBatch + ' to continue syncing remaining domains');
+                    }
+                } else {
+                    addLogMessage('Sync failed: ' + (data.error || 'Unknown error'), 'error');
+                }
+            })
+            .catch(error => {
+                addLogMessage('Network error: ' + error.message, 'error');
+            })
+            .finally(() => {
+                syncInProgress = false;
+                if (startSyncBtn) startSyncBtn.style.display = 'inline-flex';
+                if (stopSyncBtn) stopSyncBtn.style.display = 'none';
+            });
+        }
+        
+        function stopSync() {
+            syncInProgress = false;
+            const startSyncBtn = document.getElementById('startSync');
+            const stopSyncBtn = document.getElementById('stopSync');
+            
+            if (startSyncBtn) startSyncBtn.style.display = 'inline-flex';
+            if (stopSyncBtn) stopSyncBtn.style.display = 'none';
+            addLogMessage('Sync stopped by user', 'warning');
+        }
+        
+        function clearOldData() {
+            fetch('domain_sync.php', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                body: 'action=clear_old_data&days_old=30'
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    addLogMessage('Old data cleared successfully');
+                    // Reload page to update stats
+                    setTimeout(() => location.reload(), 1000);
+                } else {
+                    addLogMessage('Failed to clear old data: ' + (data.error || 'Unknown error'), 'error');
+                }
+            })
+            .catch(error => {
+                addLogMessage('Network error: ' + error.message, 'error');
+            });
+        }
+        
+        function resetProgress() {
+            const syncStatus = document.getElementById('syncStatus');
+            const domainsFound = document.getElementById('domainsFound');
+            const domainsProcessed = document.getElementById('domainsProcessed');
+            const domainsAdded = document.getElementById('domainsAdded');
+            const domainsUpdated = document.getElementById('domainsUpdated');
+            const syncErrors = document.getElementById('syncErrors');
+            const progressBar = document.getElementById('progressBar');
+            
+            if (syncStatus) syncStatus.textContent = 'Initializing...';
+            if (domainsFound) domainsFound.textContent = '0';
+            if (domainsProcessed) domainsProcessed.textContent = '0';
+            if (domainsAdded) domainsAdded.textContent = '0';
+            if (domainsUpdated) domainsUpdated.textContent = '0';
+            if (syncErrors) syncErrors.textContent = '0';
+            if (progressBar) progressBar.style.width = '0%';
+        }
+        
+        function updateProgress(data) {
+            const syncStatus = document.getElementById('syncStatus');
+            const domainsFound = document.getElementById('domainsFound');
+            const domainsProcessed = document.getElementById('domainsProcessed');
+            const domainsAdded = document.getElementById('domainsAdded');
+            const domainsUpdated = document.getElementById('domainsUpdated');
+            const syncErrors = document.getElementById('syncErrors');
+            const progressBar = document.getElementById('progressBar');
+            
+            if (syncStatus) syncStatus.textContent = data.status === 'completed' ? 'Completed' : 'Running';
+            if (domainsFound) domainsFound.textContent = data.domains_found || 0;
+            if (domainsProcessed) domainsProcessed.textContent = data.domains_processed || 0;
+            if (domainsAdded) domainsAdded.textContent = data.domains_added || 0;
+            if (domainsUpdated) domainsUpdated.textContent = data.domains_updated || 0;
+            if (syncErrors) syncErrors.textContent = data.errors || 0;
+            
+            // Update progress bar
+            if (progressBar && data.domains_found > 0) {
+                const progress = (data.domains_processed / data.domains_found) * 100;
+                progressBar.style.width = progress + '%';
+            }
+        }
+        
+        function addLogMessage(message, type = 'info') {
+            const logContent = document.getElementById('logContent');
+            if (!logContent) return;
+            
+            const timestamp = new Date().toLocaleTimeString();
+            const colorClass = type === 'error' ? 'text-red-600' : type === 'warning' ? 'text-yellow-600' : 'text-gray-600';
+            
+            const logEntry = document.createElement('div');
+            logEntry.className = 'mb-1 ' + colorClass;
+            logEntry.textContent = '[' + timestamp + '] ' + message;
+            
+            // Prepend new messages to show latest at the top
+            logContent.insertBefore(logEntry, logContent.firstChild);
+            logContent.scrollTop = 0; // Scroll to top to show latest message
+        }
         
         // Prevent any form hijacking on domains page
         <?php if ($currentView === 'domains'): ?>
@@ -2375,8 +3788,17 @@ if (userHasSettings()) {
                                         class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500">
                                     <option value="">Select a registrar...</option>
                                     <option value="__add_new__">+ Add New Registrar</option>
-                                    <?php if (isset($uniqueRegistrars) && !empty($uniqueRegistrars)): ?>
-                                        <?php foreach ($uniqueRegistrars as $registrar): ?>
+                                    <?php 
+                                    // Use the appropriate registrar list based on current view
+                                    $registrarList = [];
+                                    if ($currentView === 'domains' && isset($uniqueRegistrars)) {
+                                        $registrarList = $uniqueRegistrars;
+                                    } elseif ($currentView === 'database_view' && isset($databaseViewUniqueRegistrars)) {
+                                        $registrarList = $databaseViewUniqueRegistrars;
+                                    }
+                                    ?>
+                                    <?php if (!empty($registrarList)): ?>
+                                        <?php foreach ($registrarList as $registrar): ?>
                                             <option value="<?= htmlspecialchars($registrar) ?>"><?= htmlspecialchars($registrar) ?></option>
                                         <?php endforeach; ?>
                                     <?php endif; ?>
