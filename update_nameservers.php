@@ -27,23 +27,50 @@ if (!$userSettings) {
     $response = getAllDomains($userSettings['api_url'], $userSettings['api_identifier'], $userSettings['api_secret']);
     $allDomains = $response['domains']['domain'] ?? [];
     
-    // Clear cache if debug mode is enabled
-    if (isset($_GET['clear_cache'])) {
-        $cache = new SimpleCache();
-        $cacheKey = 'all_domains_' . md5($userSettings['api_url'] . $userSettings['api_identifier']);
-        $cache->delete($cacheKey, $_SESSION['user_email']);
-        $message = 'Cache cleared. Refreshing...';
-        header('Location: ' . $_SERVER['PHP_SELF'] . '?view=update_nameservers');
-        exit;
-    }
+    // Clear cache if debug mode is enabled or if user requests cache clear
+if (isset($_GET['clear_cache'])) {
+    $cache = new SimpleCache();
+    // Clear all domain-related cache for this user
+    $cleared = $cache->clearUserCache($_SESSION['user_email']);
+    $message = "Cache cleared ($cleared files removed). Refreshing...";
+    header('Location: ' . $_SERVER['PHP_SELF']);
+    exit;
+}
+
+// Force refresh bypass cache
+if (isset($_GET['force_refresh'])) {
+    $cache = new SimpleCache();
+    $cleared = $cache->clearUserCache($_SESSION['user_email']);
+    // Force a fresh API call by temporarily disabling cache
+    $response = getAllDomains($userSettings['api_url'], $userSettings['api_identifier'], $userSettings['api_secret']);
+    $allDomains = $response['domains']['domain'] ?? [];
+    $message = "Forced refresh completed (bypassed cache). Found " . count($allDomains) . " domains.";
+}
 }
 
 // Sort domains alphabetically by domainname (case-insensitive)
-usort($allDomains, function($a, $b) {
-    $domainA = strtolower($a['domainname'] ?? '');
-    $domainB = strtolower($b['domainname'] ?? '');
-    return strcmp($domainA, $domainB);
-});
+// Ensure we have valid domain data before sorting
+if (!empty($allDomains) && is_array($allDomains)) {
+    // First, ensure all domains have valid domainname field
+    $allDomains = array_filter($allDomains, function($domain) {
+        return isset($domain['domainname']) && !empty($domain['domainname']);
+    });
+    
+    // Sort domains alphabetically by domainname (case-insensitive)
+    usort($allDomains, function($a, $b) {
+        $domainA = strtolower($a['domainname'] ?? '');
+        $domainB = strtolower($b['domainname'] ?? '');
+        return strcmp($domainA, $domainB);
+    });
+    
+    // Debug: Log sorting results
+    if (isset($_GET['debug']) && count($allDomains) > 0) {
+        error_log("Update Nameservers - Domains after sorting: " . count($allDomains) . " total");
+        for ($i = 0; $i < min(5, count($allDomains)); $i++) {
+            error_log("  " . ($i + 1) . ". " . $allDomains[$i]['domainname']);
+        }
+    }
+}
 
 // Debug: Log the first few domains to verify sorting (only in debug mode)
 if (isset($_GET['debug']) && count($allDomains) > 0) {
@@ -51,6 +78,25 @@ if (isset($_GET['debug']) && count($allDomains) > 0) {
     for ($i = 0; $i < min(5, count($allDomains)); $i++) {
         error_log("  " . ($i + 1) . ". " . $allDomains[$i]['domainname']);
     }
+}
+
+// Show sorting info for debugging (always visible when domains exist)
+if (count($allDomains) > 0) {
+    // Always show some debug info to help troubleshoot
+    echo '<div style="background: #e6f3ff; padding: 10px; margin: 10px 0; border: 1px solid #0066cc; border-radius: 5px;">';
+    echo '<strong>📊 Domain List Info:</strong><br>';
+    echo 'Total domains: ' . count($allDomains) . '<br>';
+    echo 'First 10 domains after sorting:<br>';
+    echo '<ol style="margin: 5px 0 0 20px;">';
+    for ($i = 0; $i < min(10, count($allDomains)); $i++) {
+        echo '<li>' . htmlspecialchars($allDomains[$i]['domainname']) . '</li>';
+    }
+    echo '</ol>';
+    if (isset($_GET['debug'])) {
+        echo '<br><strong>Raw domain data structure (first domain):</strong><br>';
+        echo '<pre style="background: white; padding: 5px; font-size: 11px;">' . htmlspecialchars(print_r($allDomains[0], true)) . '</pre>';
+    }
+    echo '</div>';
 }
 
 $message = '';
@@ -218,11 +264,13 @@ if (isset($_POST['update']) && !empty($_POST['domain']) && is_array($_POST['doma
                             <div class="form-group">
                                 <div class="flex justify-between items-center mb-3">
                                     <label for="domain" class="form-label">Available Domains (<?= count($allDomains) ?> total, sorted alphabetically)</label>
-                                                                    <div class="flex gap-2">
-                                    <button type="button" id="selectAllBtn" class="btn btn-sm btn-outline">Select All</button>
-                                    <button type="button" id="clearAllBtn" class="btn btn-sm btn-secondary">Clear All</button>
-                                    <button type="button" onclick="showCacheModal()" class="btn btn-sm btn-warning">Clear Cache</button>
-                                </div>
+                                    <div class="flex gap-2">
+                                        <button type="button" id="selectAllBtn" class="btn btn-sm btn-outline">Select All</button>
+                                        <button type="button" id="clearAllBtn" class="btn btn-sm btn-secondary">Clear All</button>
+                                        <a href="?clear_cache=1" class="btn btn-sm btn-warning">Refresh List</a>
+                                        <a href="?force_refresh=1" class="btn btn-sm btn-danger">Force Refresh</a>
+                                        <button type="button" onclick="showCacheModal()" class="btn btn-sm btn-warning">Clear Cache</button>
+                                    </div>
                                 </div>
                                 
                                 <select name="domain[]" id="domain" required multiple class="form-select" style="min-height: 300px;">
@@ -354,6 +402,42 @@ if (isset($_POST['update']) && !empty($_POST['domain']) && is_array($_POST['doma
     </div>
 
     <script src="js/main.js"></script>
+    <script>
+    // Ensure domains are sorted in the select element
+    document.addEventListener('DOMContentLoaded', function() {
+        console.log('Sorting domains in select element...');
+        const domainSelect = document.getElementById('domain');
+        if (domainSelect) {
+            console.log('Found domain select with', domainSelect.options.length, 'options');
+            
+            // Get all options
+            const options = Array.from(domainSelect.options);
+            
+            // Log first few domains before sorting
+            console.log('First 5 domains before JS sorting:', 
+                options.slice(0, 5).map(opt => opt.text));
+            
+            // Sort options alphabetically (case-insensitive)
+            options.sort(function(a, b) {
+                return a.text.toLowerCase().localeCompare(b.text.toLowerCase());
+            });
+            
+            // Log first few domains after sorting
+            console.log('First 5 domains after JS sorting:', 
+                options.slice(0, 5).map(opt => opt.text));
+            
+            // Clear and re-add sorted options
+            domainSelect.innerHTML = '';
+            options.forEach(function(option) {
+                domainSelect.appendChild(option);
+            });
+            
+            console.log('Domain sorting completed');
+        } else {
+            console.log('Domain select element not found');
+        }
+    });
+    </script>
     <style>
         .space-y-6 > * + * {
             margin-top: 1.5rem;

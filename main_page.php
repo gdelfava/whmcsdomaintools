@@ -101,6 +101,16 @@ $updateResults = [];
 $allDomains = [];
 
 if ($currentView === 'nameservers') {
+    // Clear cache if user requests cache clear
+    if (isset($_GET['clear_cache'])) {
+        $cache = new SimpleCache();
+        // Clear all domain-related cache for this user
+        $cleared = $cache->clearUserCache($_SESSION['user_email']);
+        $updateMessage = "Cache cleared ($cleared files removed). Refreshing...";
+        header('Location: ?view=nameservers');
+        exit;
+    }
+    
     // Check if user has configured their API settings
     if (!userHasSettings()) {
         $updateMessage = 'Please configure your API settings first.';
@@ -110,14 +120,35 @@ if ($currentView === 'nameservers') {
         if (!$userSettings) {
             $updateMessage = 'Unable to load your API settings. Please configure them first.';
         } else {
-            // Get all domains
-            $response = getAllDomains($userSettings['api_url'], $userSettings['api_identifier'], $userSettings['api_secret']);
-            $allDomains = $response['domains']['domain'] ?? [];
+            // Force refresh bypass cache
+            if (isset($_GET['force_refresh'])) {
+                $cache = new SimpleCache();
+                $cleared = $cache->clearUserCache($_SESSION['user_email']);
+                // Force a fresh API call by temporarily disabling cache
+                $response = getAllDomains($userSettings['api_url'], $userSettings['api_identifier'], $userSettings['api_secret']);
+                $allDomains = $response['domains']['domain'] ?? [];
+                $updateMessage = "Forced refresh completed (bypassed cache). Found " . count($allDomains) . " domains.";
+            } else {
+                // Get all domains
+                $response = getAllDomains($userSettings['api_url'], $userSettings['api_identifier'], $userSettings['api_secret']);
+                $allDomains = $response['domains']['domain'] ?? [];
+            }
             
-            // Sort domains alphabetically
-            usort($allDomains, function($a, $b) {
-                return strcmp($a['domainname'], $b['domainname']);
-            });
+            // Sort domains alphabetically by domainname (case-insensitive)
+            // Ensure we have valid domain data before sorting
+            if (!empty($allDomains) && is_array($allDomains)) {
+                // First, ensure all domains have valid domainname field
+                $allDomains = array_filter($allDomains, function($domain) {
+                    return isset($domain['domainname']) && !empty($domain['domainname']);
+                });
+                
+                // Sort domains alphabetically by domainname (case-insensitive)
+                usort($allDomains, function($a, $b) {
+                    $domainA = strtolower($a['domainname'] ?? '');
+                    $domainB = strtolower($b['domainname'] ?? '');
+                    return strcmp($domainA, $domainB);
+                });
+            }
         }
     }
     
@@ -2194,15 +2225,17 @@ if (userHasSettings()) {
                      <p class="text-gray-600">Batch update nameservers for multiple domains simultaneously.</p>
                                 </div>
 
-                 <!-- Status Message -->
-                 <?php if ($updateMessage): ?>
-                     <div class="mb-6 p-4 rounded-lg <?= strpos($updateMessage, 'successful') !== false ? 'bg-green-50 border border-green-200 text-green-800' : 'bg-yellow-50 border border-yellow-200 text-yellow-800' ?>">
-                         <div class="flex items-center space-x-3">
-                             <i data-lucide="<?= strpos($updateMessage, 'successful') !== false ? 'check-circle' : 'alert-triangle' ?>" class="w-5 h-5"></i>
-                             <span><?= htmlspecialchars($updateMessage) ?></span>
-                         </div>
-                                    </div>
-                                <?php endif; ?>
+                                 <!-- Status Message -->
+                <?php if ($updateMessage): ?>
+                    <div class="mb-6 p-4 rounded-lg <?= strpos($updateMessage, 'successful') !== false ? 'bg-green-50 border border-green-200 text-green-800' : 'bg-yellow-50 border border-yellow-200 text-yellow-800' ?>">
+                        <div class="flex items-center space-x-3">
+                            <i data-lucide="<?= strpos($updateMessage, 'successful') !== false ? 'check-circle' : 'alert-triangle' ?>" class="w-5 h-5"></i>
+                            <span><?= htmlspecialchars($updateMessage) ?></span>
+                        </div>
+                    </div>
+                <?php endif; ?>
+
+
 
                  <!-- Configuration Info -->
                  <?php if ($currentSettings): ?>
@@ -2260,13 +2293,15 @@ if (userHasSettings()) {
 
                      <form method="POST" class="space-y-6">
                          <div>
-                             <div class="flex justify-between items-center mb-3">
-                                 <label for="domain" class="block text-sm font-medium text-gray-700">Available Domains (<?= count($allDomains) ?> total)</label>
-                                                                 <div class="flex gap-2">
+                                                         <div class="flex justify-between items-center mb-3">
+                                <label for="domain" class="block text-sm font-medium text-gray-700">Available Domains (<?= count($allDomains) ?> total, sorted alphabetically)</label>
+                                <div class="flex gap-2">
                                     <button type="button" id="selectAllBtn" class="bg-white hover:bg-gray-50 text-gray-700 border border-gray-300 px-3 py-1 rounded-md text-sm font-medium transition-colors">Select All</button>
                                     <button type="button" id="clearAllBtn" class="bg-white hover:bg-gray-50 text-gray-700 border border-gray-300 px-3 py-1 rounded-md text-sm font-medium transition-colors">Clear All</button>
+                                    <a href="?view=nameservers&clear_cache=1" class="bg-yellow-100 hover:bg-yellow-200 text-yellow-800 border border-yellow-300 px-3 py-1 rounded-md text-sm font-medium transition-colors">Refresh List</a>
+                                    <a href="?view=nameservers&force_refresh=1" class="bg-red-100 hover:bg-red-200 text-red-800 border border-red-300 px-3 py-1 rounded-md text-sm font-medium transition-colors">Force Refresh</a>
                                     <button type="button" onclick="showCacheModal()" class="bg-yellow-100 hover:bg-yellow-200 text-yellow-800 border border-yellow-300 px-3 py-1 rounded-md text-sm font-medium transition-colors">Clear Cache</button>
-                            </div>
+                                </div>
                             </div>
                              
                              <select name="domain[]" id="domain" required multiple class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent" style="min-height: 300px;">
@@ -4069,6 +4104,51 @@ if (userHasSettings()) {
                 });
             });
         });
+
+        // Domain sorting functionality for nameservers view
+        if (window.location.search.includes('view=nameservers')) {
+            console.log('Nameservers view detected, setting up domain sorting...');
+            
+            function sortDomainsInSelect() {
+                const domainSelect = document.getElementById('domain');
+                if (domainSelect) {
+                    console.log('Found domain select with', domainSelect.options.length, 'options');
+                    
+                    // Get all options
+                    const options = Array.from(domainSelect.options);
+                    
+                    // Log first few domains before sorting
+                    console.log('First 5 domains before JS sorting:', 
+                        options.slice(0, 5).map(opt => opt.text));
+                    
+                    // Sort options alphabetically (case-insensitive)
+                    options.sort(function(a, b) {
+                        return a.text.toLowerCase().localeCompare(b.text.toLowerCase());
+                    });
+                    
+                    // Log first few domains after sorting
+                    console.log('First 5 domains after JS sorting:', 
+                        options.slice(0, 5).map(opt => opt.text));
+                    
+                    // Clear and re-add sorted options
+                    domainSelect.innerHTML = '';
+                    options.forEach(function(option) {
+                        domainSelect.appendChild(option);
+                    });
+                    
+                    console.log('Domain sorting completed');
+                } else {
+                    console.log('Domain select element not found');
+                }
+            }
+
+            // Run sorting when DOM is ready
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', sortDomainsInSelect);
+            } else {
+                sortDomainsInSelect();
+            }
+        }
     </script>
 
 </body>

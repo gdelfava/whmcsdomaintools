@@ -102,14 +102,21 @@ class SimpleCache {
      * Clear all cache for a user
      */
     public function clearUserCache($userEmail) {
-        $pattern = $this->cacheDir . '/' . md5($userEmail . '_*') . '.cache';
-        $files = glob($pattern);
+        $files = glob($this->cacheDir . '/*.cache');
+        $userPrefix = md5($userEmail . '_');
+        $cleared = 0;
         
         foreach ($files as $file) {
-            unlink($file);
+            $filename = basename($file, '.cache');
+            // Check if this cache file belongs to the user by checking if the filename starts with the user prefix
+            if (strpos($filename, substr($userPrefix, 0, 8)) === 0) {
+                if (unlink($file)) {
+                    $cleared++;
+                }
+            }
         }
         
-        return true;
+        return $cleared;
     }
     
     /**
