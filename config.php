@@ -3,6 +3,16 @@
 error_reporting(E_ALL);
 ini_set('display_errors', 1);
 
+// === SESSION CONFIGURATION ===
+// Configure session for better persistence (only if session not already started)
+if (session_status() === PHP_SESSION_NONE) {
+    ini_set('session.cookie_lifetime', 86400 * 7); // 7 days
+    ini_set('session.gc_maxlifetime', 86400 * 7);  // 7 days
+    ini_set('session.cookie_httponly', 1);         // Security: HTTP only
+    ini_set('session.cookie_secure', isset($_SERVER['HTTPS'])); // HTTPS only if available
+    ini_set('session.use_strict_mode', 1);         // Security: strict mode
+}
+
 // Load environment variables from .env file if it exists
 function loadEnv($file) {
     if (!file_exists($file)) {

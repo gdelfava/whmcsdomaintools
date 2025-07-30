@@ -37,26 +37,43 @@ class UserSettings {
         $settingsFile = $this->getSettingsFile($userId);
         
         if (!file_exists($settingsFile)) {
+            error_log("UserSettings: Settings file not found for user: $userId");
             return null;
         }
         
-        $settings = json_decode(file_get_contents($settingsFile), true);
+        $content = file_get_contents($settingsFile);
+        if ($content === false) {
+            error_log("UserSettings: Failed to read settings file for user: $userId");
+            return null;
+        }
+        
+        $settings = json_decode($content, true);
         
         if (!$settings) {
+            error_log("UserSettings: Failed to decode JSON for user: $userId");
             return null;
         }
         
-        // Decrypt sensitive data
-        return [
-            'api_url' => $settings['api_url'],
-            'api_identifier' => $this->decrypt($settings['api_identifier']),
-            'api_secret' => $this->decrypt($settings['api_secret']),
-            'default_ns1' => $settings['default_ns1'],
-            'default_ns2' => $settings['default_ns2'],
-            'logo_url' => $settings['logo_url'] ?? '',
-            'created_at' => $settings['created_at'] ?? null,
-            'updated_at' => $settings['updated_at'] ?? null
-        ];
+        try {
+            // Decrypt sensitive data with error handling
+            $decryptedSettings = [
+                'api_url' => $settings['api_url'] ?? '',
+                'api_identifier' => $this->decrypt($settings['api_identifier'] ?? ''),
+                'api_secret' => $this->decrypt($settings['api_secret'] ?? ''),
+                'default_ns1' => $settings['default_ns1'] ?? '',
+                'default_ns2' => $settings['default_ns2'] ?? '',
+                'logo_url' => $settings['logo_url'] ?? '',
+                'created_at' => $settings['created_at'] ?? null,
+                'updated_at' => $settings['updated_at'] ?? null
+            ];
+            
+            error_log("UserSettings: Successfully loaded and decrypted settings for user: $userId");
+            return $decryptedSettings;
+            
+        } catch (Exception $e) {
+            error_log("UserSettings: Decryption failed for user $userId: " . $e->getMessage());
+            return null;
+        }
     }
     
     public function hasSettings($userId) {
@@ -102,11 +119,20 @@ class UserSettings {
 // Helper function to get current user's settings
 function getUserSettings() {
     if (!isset($_SESSION['user_email'])) {
+        error_log('getUserSettings: No user email in session');
         return null;
     }
     
     $userSettings = new UserSettings();
-    return $userSettings->loadSettings($_SESSION['user_email']);
+    $settings = $userSettings->loadSettings($_SESSION['user_email']);
+    
+    if ($settings) {
+        error_log('getUserSettings: Successfully loaded settings for user: ' . $_SESSION['user_email']);
+    } else {
+        error_log('getUserSettings: No settings found for user: ' . $_SESSION['user_email']);
+    }
+    
+    return $settings;
 }
 
 // Helper function to check if user has configured settings

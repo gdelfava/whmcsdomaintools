@@ -1014,6 +1014,12 @@ if (userHasSettings()) {
                             </a>
                         </li>
                         <li>
+                            <a href="?view=debug" class="flex items-center space-x-3 px-3 py-2 <?= $currentView === 'debug' ? 'bg-primary-50 text-primary-700 rounded-lg border-l-4 border-primary-600' : 'text-gray-500 hover:bg-gray-50 rounded-lg transition-colors' ?>">
+                                <i data-lucide="bug" class="w-4 h-4 <?= $currentView === 'debug' ? 'text-primary-600' : 'text-gray-400' ?>"></i>
+                                <span class="text-sm <?= $currentView === 'debug' ? 'font-semibold text-gray-900' : 'font-normal' ?>">Debug Settings</span>
+                            </a>
+                        </li>
+                        <li>
                             <a href="#" class="flex items-center space-x-3 px-3 py-2 text-gray-500 hover:bg-gray-50 rounded-lg transition-colors">
                                 <i data-lucide="help-circle" class="w-4 h-4 text-gray-400"></i>
                                 <span class="text-sm font-normal">Help</span>
@@ -3252,10 +3258,8 @@ if (userHasSettings()) {
                                  </div>
                                  
                                  <div class="flex items-center justify-between">
-                                     <span class="flex items-center space-x-2">
-                                         <span class="text-sm font-medium text-gray-700">Domains Added:</span>
-                                         <span id="domainsAdded" class="text-sm font-medium text-green-600">0</span>
-                                     </span>
+                                     <span class="text-sm font-medium text-gray-700">Domains Added:</span>
+                                     <span id="domainsAdded" class="text-sm font-medium text-green-600">0</span>
                                  </div>
                                  
                                  <div class="flex items-center justify-between">
@@ -3399,6 +3403,315 @@ if (userHasSettings()) {
                          <i data-lucide="refresh-cw" class="w-4 h-4"></i>
                          <span>Start Domain Sync</span>
                      </a>
+                 </div>
+                 
+                 <?php elseif ($currentView === 'debug'): ?>
+                 <!-- Debug Settings Content -->
+                 <?php
+                 // Generate debug information
+                 $debugInfo = [];
+                 
+                 // Get session information
+                 $debugInfo['session'] = [
+                     'logged_in' => $_SESSION['logged_in'] ?? false,
+                     'user_email' => $_SESSION['user_email'] ?? 'Not set',
+                     'firebase_token' => isset($_SESSION['firebase_token']) ? 'Present' : 'Not set',
+                     'session_id' => session_id(),
+                     'session_save_path' => session_save_path(),
+                 ];
+                 
+                 // Get user settings information
+                 $debugInfo['settings'] = [
+                     'has_settings' => userHasSettings(),
+                     'settings_validation' => validateSettingsCompleteness(),
+                     'current_settings' => getUserSettings()
+                 ];
+                 
+                 // Get file system information
+                 $debugInfo['filesystem'] = [
+                     'user_settings_dir_exists' => is_dir('user_settings'),
+                     'user_settings_dir_writable' => is_writable('user_settings'),
+                     'settings_file' => null,
+                     'settings_file_exists' => false,
+                     'settings_file_readable' => false
+                 ];
+                 
+                 if (isset($_SESSION['user_email'])) {
+                     $userSettings = new UserSettings();
+                     $settingsFile = 'user_settings/' . md5($_SESSION['user_email']) . '.json';
+                     $debugInfo['filesystem']['settings_file'] = $settingsFile;
+                     $debugInfo['filesystem']['settings_file_exists'] = file_exists($settingsFile);
+                     $debugInfo['filesystem']['settings_file_readable'] = file_exists($settingsFile) && is_readable($settingsFile);
+                 }
+                 
+                 // Get environment information
+                 $debugInfo['environment'] = [
+                     'php_version' => phpversion(),
+                     'session_module_name' => session_module_name(),
+                     'encryption_key_defined' => defined('ENCRYPTION_KEY'),
+                     'server_name' => $_SERVER['SERVER_NAME'] ?? 'Unknown'
+                 ];
+                 ?>
+                 
+                 <!-- Page Header -->
+                 <div class="mb-8">
+                     <div class="flex items-center justify-between">
+                         <div>
+                             <h1 class="text-2xl font-bold text-gray-900 mb-2">🔍 Settings Debug</h1>
+                             <p class="text-gray-600">Diagnostic information for troubleshooting settings persistence</p>
+                         </div>
+                         <div class="flex items-center space-x-2 text-blue-600 bg-blue-50 px-4 py-2 rounded-lg">
+                             <i data-lucide="activity" class="w-5 h-5"></i>
+                             <span class="font-medium">System Diagnostics</span>
+                         </div>
+                     </div>
+                 </div>
+
+                 <!-- Overall Status Cards -->
+                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+                     <div class="bg-white p-6 rounded-xl border border-gray-200">
+                         <div class="flex items-center justify-between mb-4">
+                             <h3 class="text-lg font-semibold text-gray-900">Authentication Status</h3>
+                             <div class="w-12 h-12 <?= $debugInfo['session']['logged_in'] ? 'bg-green-100' : 'bg-red-100' ?> rounded-full flex items-center justify-center">
+                                 <span class="text-2xl"><?= $debugInfo['session']['logged_in'] ? '✅' : '❌' ?></span>
+                             </div>
+                         </div>
+                         <p class="text-gray-600 mb-2"><?= $debugInfo['session']['logged_in'] ? 'User is properly logged in' : 'Authentication issue detected' ?></p>
+                         <div class="text-sm text-gray-500">
+                             User: <?= htmlspecialchars($debugInfo['session']['user_email']) ?>
+                         </div>
+                     </div>
+                     
+                     <div class="bg-white p-6 rounded-xl border border-gray-200">
+                         <div class="flex items-center justify-between mb-4">
+                             <h3 class="text-lg font-semibold text-gray-900">Settings Status</h3>
+                             <div class="w-12 h-12 <?= $debugInfo['settings']['has_settings'] ? 'bg-green-100' : 'bg-yellow-100' ?> rounded-full flex items-center justify-center">
+                                 <span class="text-2xl"><?= $debugInfo['settings']['has_settings'] ? '✅' : '⚠️' ?></span>
+                             </div>
+                         </div>
+                         <p class="text-gray-600 mb-2"><?= $debugInfo['settings']['has_settings'] ? 'Settings are configured and saved' : 'No settings configured yet' ?></p>
+                         <div class="text-sm text-gray-500">
+                             <?= empty($debugInfo['settings']['settings_validation']['missing']) ? 'All required fields complete' : count($debugInfo['settings']['settings_validation']['missing']) . ' missing fields' ?>
+                         </div>
+                     </div>
+                 </div>
+
+                 <!-- Session Information -->
+                 <div class="bg-white p-6 rounded-xl border border-gray-200 mb-6">
+                     <h3 class="text-lg font-semibold text-gray-900 mb-4 flex items-center space-x-2">
+                         <i data-lucide="shield-check" class="w-5 h-5 text-primary-600"></i>
+                         <span>Session Information</span>
+                     </h3>
+                     
+                     <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                         <div>
+                             <h4 class="font-medium text-gray-900 mb-3">Session Data</h4>
+                             <div class="space-y-2 text-sm">
+                                 <div class="flex justify-between">
+                                     <span class="text-gray-600">Logged In:</span>
+                                     <span class="font-medium <?= $debugInfo['session']['logged_in'] ? 'text-green-600' : 'text-red-600' ?>">
+                                         <?= $debugInfo['session']['logged_in'] ? 'Yes' : 'No' ?>
+                                     </span>
+                                 </div>
+                                 <div class="flex justify-between">
+                                     <span class="text-gray-600">User Email:</span>
+                                     <span class="font-medium"><?= htmlspecialchars($debugInfo['session']['user_email']) ?></span>
+                                 </div>
+                                 <div class="flex justify-between">
+                                     <span class="text-gray-600">Firebase Token:</span>
+                                     <span class="font-medium"><?= $debugInfo['session']['firebase_token'] ?></span>
+                                 </div>
+                             </div>
+                         </div>
+                         
+                         <div>
+                             <h4 class="font-medium text-gray-900 mb-3">Session Configuration</h4>
+                             <div class="space-y-2 text-sm">
+                                 <div class="flex justify-between">
+                                     <span class="text-gray-600">Session ID:</span>
+                                     <span class="font-mono text-xs"><?= htmlspecialchars($debugInfo['session']['session_id']) ?></span>
+                                 </div>
+                                 <div class="flex justify-between">
+                                     <span class="text-gray-600">Save Path:</span>
+                                     <span class="font-mono text-xs"><?= htmlspecialchars($debugInfo['session']['session_save_path']) ?></span>
+                                 </div>
+                             </div>
+                         </div>
+                     </div>
+                 </div>
+
+                 <!-- Settings Information -->
+                 <div class="bg-white p-6 rounded-xl border border-gray-200 mb-6">
+                     <h3 class="text-lg font-semibold text-gray-900 mb-4 flex items-center space-x-2">
+                         <i data-lucide="settings" class="w-5 h-5 text-primary-600"></i>
+                         <span>Settings Information</span>
+                     </h3>
+                     
+                     <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                         <div>
+                             <h4 class="font-medium text-gray-900 mb-3">Settings Status</h4>
+                             <div class="space-y-2 text-sm">
+                                 <div class="flex justify-between">
+                                     <span class="text-gray-600">Has Settings:</span>
+                                     <span class="font-medium <?= $debugInfo['settings']['has_settings'] ? 'text-green-600' : 'text-red-600' ?>">
+                                         <?= $debugInfo['settings']['has_settings'] ? 'Yes' : 'No' ?>
+                                     </span>
+                                 </div>
+                                 <?php if (!empty($debugInfo['settings']['settings_validation']['missing'])): ?>
+                                 <div class="mt-3">
+                                     <span class="text-gray-600 block mb-2">Missing Fields:</span>
+                                     <div class="space-y-1">
+                                         <?php foreach ($debugInfo['settings']['settings_validation']['missing'] as $missing): ?>
+                                         <div class="flex items-center space-x-2 text-red-600">
+                                             <span class="text-red-500">•</span>
+                                             <span><?= htmlspecialchars($missing) ?></span>
+                                         </div>
+                                         <?php endforeach; ?>
+                                     </div>
+                                 </div>
+                                 <?php endif; ?>
+                             </div>
+                         </div>
+                         
+                         <div>
+                             <h4 class="font-medium text-gray-900 mb-3">Current Settings (Masked)</h4>
+                             <?php 
+                             $maskedSettings = $debugInfo['settings']['current_settings'];
+                             if ($maskedSettings) {
+                                 $maskedSettings['api_identifier'] = $maskedSettings['api_identifier'] ? str_repeat('*', 8) . substr($maskedSettings['api_identifier'], -4) : 'Not set';
+                                 $maskedSettings['api_secret'] = $maskedSettings['api_secret'] ? str_repeat('*', 12) : 'Not set';
+                             }
+                             ?>
+                             <div class="space-y-2 text-sm">
+                                 <div class="flex justify-between">
+                                     <span class="text-gray-600">API URL:</span>
+                                     <span class="font-medium"><?= $maskedSettings ? htmlspecialchars(parse_url($maskedSettings['api_url'], PHP_URL_HOST) ?? 'Not set') : 'Not set' ?></span>
+                                 </div>
+                                 <div class="flex justify-between">
+                                     <span class="text-gray-600">API Identifier:</span>
+                                     <span class="font-mono text-xs"><?= $maskedSettings ? htmlspecialchars($maskedSettings['api_identifier']) : 'Not set' ?></span>
+                                 </div>
+                                 <div class="flex justify-between">
+                                     <span class="text-gray-600">API Secret:</span>
+                                     <span class="font-mono text-xs"><?= $maskedSettings ? htmlspecialchars($maskedSettings['api_secret']) : 'Not set' ?></span>
+                                 </div>
+                                 <?php if ($maskedSettings && !empty($maskedSettings['updated_at'])): ?>
+                                 <div class="flex justify-between">
+                                     <span class="text-gray-600">Last Updated:</span>
+                                     <span class="font-medium"><?= htmlspecialchars($maskedSettings['updated_at']) ?></span>
+                                 </div>
+                                 <?php endif; ?>
+                             </div>
+                         </div>
+                     </div>
+                 </div>
+
+                 <!-- File System Information -->
+                 <div class="bg-white p-6 rounded-xl border border-gray-200 mb-6">
+                     <h3 class="text-lg font-semibold text-gray-900 mb-4 flex items-center space-x-2">
+                         <i data-lucide="folder" class="w-5 h-5 text-primary-600"></i>
+                         <span>File System Information</span>
+                     </h3>
+                     
+                     <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                         <div>
+                             <h4 class="font-medium text-gray-900 mb-3">Directory Status</h4>
+                             <div class="space-y-2 text-sm">
+                                 <div class="flex justify-between">
+                                     <span class="text-gray-600">Settings Dir Exists:</span>
+                                     <span class="font-medium <?= $debugInfo['filesystem']['user_settings_dir_exists'] ? 'text-green-600' : 'text-red-600' ?>">
+                                         <?= $debugInfo['filesystem']['user_settings_dir_exists'] ? 'Yes' : 'No' ?>
+                                     </span>
+                                 </div>
+                                 <div class="flex justify-between">
+                                     <span class="text-gray-600">Dir Writable:</span>
+                                     <span class="font-medium <?= $debugInfo['filesystem']['user_settings_dir_writable'] ? 'text-green-600' : 'text-red-600' ?>">
+                                         <?= $debugInfo['filesystem']['user_settings_dir_writable'] ? 'Yes' : 'No' ?>
+                                     </span>
+                                 </div>
+                             </div>
+                         </div>
+                         
+                         <div>
+                             <h4 class="font-medium text-gray-900 mb-3">Settings File</h4>
+                             <div class="space-y-2 text-sm">
+                                 <div class="flex justify-between">
+                                     <span class="text-gray-600">File Exists:</span>
+                                     <span class="font-medium <?= $debugInfo['filesystem']['settings_file_exists'] ? 'text-green-600' : 'text-red-600' ?>">
+                                         <?= $debugInfo['filesystem']['settings_file_exists'] ? 'Yes' : 'No' ?>
+                                     </span>
+                                 </div>
+                                 <div class="flex justify-between">
+                                     <span class="text-gray-600">File Readable:</span>
+                                     <span class="font-medium <?= $debugInfo['filesystem']['settings_file_readable'] ? 'text-green-600' : 'text-red-600' ?>">
+                                         <?= $debugInfo['filesystem']['settings_file_readable'] ? 'Yes' : 'No' ?>
+                                     </span>
+                                 </div>
+                                 <?php if ($debugInfo['filesystem']['settings_file']): ?>
+                                 <div class="mt-2">
+                                     <span class="text-gray-600 block">File Path:</span>
+                                     <span class="font-mono text-xs bg-gray-100 px-2 py-1 rounded"><?= htmlspecialchars($debugInfo['filesystem']['settings_file']) ?></span>
+                                 </div>
+                                 <?php endif; ?>
+                             </div>
+                         </div>
+                     </div>
+                 </div>
+
+                 <!-- Environment Information -->
+                 <div class="bg-white p-6 rounded-xl border border-gray-200 mb-6">
+                     <h3 class="text-lg font-semibold text-gray-900 mb-4 flex items-center space-x-2">
+                         <i data-lucide="server" class="w-5 h-5 text-primary-600"></i>
+                         <span>Environment Information</span>
+                     </h3>
+                     
+                     <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                         <div>
+                             <h4 class="font-medium text-gray-900 mb-3">System Info</h4>
+                             <div class="space-y-2 text-sm">
+                                 <div class="flex justify-between">
+                                     <span class="text-gray-600">PHP Version:</span>
+                                     <span class="font-medium"><?= htmlspecialchars($debugInfo['environment']['php_version']) ?></span>
+                                 </div>
+                                 <div class="flex justify-between">
+                                     <span class="text-gray-600">Session Module:</span>
+                                     <span class="font-medium"><?= htmlspecialchars($debugInfo['environment']['session_module_name']) ?></span>
+                                 </div>
+                             </div>
+                         </div>
+                         
+                         <div>
+                             <h4 class="font-medium text-gray-900 mb-3">Configuration</h4>
+                             <div class="space-y-2 text-sm">
+                                 <div class="flex justify-between">
+                                     <span class="text-gray-600">Encryption Key:</span>
+                                     <span class="font-medium <?= $debugInfo['environment']['encryption_key_defined'] ? 'text-green-600' : 'text-red-600' ?>">
+                                         <?= $debugInfo['environment']['encryption_key_defined'] ? 'Defined' : 'Not Defined' ?>
+                                     </span>
+                                 </div>
+                                 <div class="flex justify-between">
+                                     <span class="text-gray-600">Server Name:</span>
+                                     <span class="font-medium"><?= htmlspecialchars($debugInfo['environment']['server_name']) ?></span>
+                                 </div>
+                             </div>
+                         </div>
+                     </div>
+                 </div>
+
+                 <!-- Action Buttons -->
+                 <div class="flex flex-col sm:flex-row gap-4">
+                     <a href="?view=settings" class="bg-primary-600 hover:bg-primary-700 text-white px-6 py-3 rounded-lg font-medium transition-colors flex items-center justify-center space-x-2">
+                         <i data-lucide="settings" class="w-5 h-5"></i>
+                         <span>Go to Settings</span>
+                     </a>
+                     <a href="?view=dashboard" class="bg-white hover:bg-gray-50 text-gray-700 border border-gray-300 px-6 py-3 rounded-lg font-medium transition-colors flex items-center justify-center space-x-2">
+                         <i data-lucide="home" class="w-5 h-5"></i>
+                         <span>Back to Dashboard</span>
+                     </a>
+                     <button onclick="location.reload()" class="bg-white hover:bg-gray-50 text-gray-700 border border-gray-300 px-6 py-3 rounded-lg font-medium transition-colors flex items-center justify-center space-x-2">
+                         <i data-lucide="refresh-cw" class="w-5 h-5"></i>
+                         <span>Refresh Debug Info</span>
+                     </button>
                  </div>
                  
                  <?php endif; ?>

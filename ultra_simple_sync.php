@@ -1,6 +1,8 @@
 <?php
 // Ultra-minimal sync - no complex includes, fast execution
-session_start();
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
 
 // Set limits first
 ini_set('max_execution_time', 90);
@@ -16,7 +18,7 @@ if (!isset($_SESSION['logged_in']) || !$_SESSION['logged_in']) {
     exit;
 }
 
-if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+if (!isset($_SERVER['REQUEST_METHOD']) || $_SERVER['REQUEST_METHOD'] !== 'POST') {
     echo json_encode(['success' => false, 'error' => 'Only POST allowed']);
     exit;
 }

@@ -37,8 +37,11 @@ if (isset($_POST['save_settings'])) {
         
         $userSettings = new UserSettings();
         if ($userSettings->saveSettings($_SESSION['user_email'], $settings)) {
-            $message = 'Settings saved successfully!';
+            $message = '✅ Settings saved successfully! Your API data will persist across login sessions.';
             $messageType = 'success';
+            
+            // Log successful save
+            error_log('Settings saved successfully for user: ' . $_SESSION['user_email']);
             
             // If there's a redirect parameter, redirect after saving
             if (isset($_GET['redirect']) && !empty($_GET['redirect'])) {
@@ -47,11 +50,12 @@ if (isset($_POST['save_settings'])) {
                 exit;
             }
         } else {
-            $message = 'Failed to save settings. Please try again.';
+            $message = '❌ Failed to save settings. Please check file permissions on user_settings/ directory.';
             $messageType = 'error';
+            error_log('Failed to save settings for user: ' . $_SESSION['user_email']);
         }
     } else {
-        $message = 'Please fill in all required fields.';
+        $message = '⚠️ Please fill in all required fields.';
         $messageType = 'error';
     }
 }
@@ -321,12 +325,18 @@ $currentSettings = getUserSettings();
                             <div class="flex items-center gap-4">
                                 <span style="font-size: 2rem;">✅</span>
                                 <div>
-                                    <h4 class="font-semibold text-success-800 mb-1">Settings Configured Successfully</h4>
+                                    <h4 class="font-semibold text-success-800 mb-1">Settings Configured & Persistent</h4>
                                     <div class="text-sm text-success-700">
+                                        Your API settings are saved and will persist across login sessions.
+                                    </div>
+                                    <div class="text-sm text-success-700 mt-1">
                                         Last updated: <?= htmlspecialchars($currentSettings['updated_at'] ?? 'Unknown') ?>
                                     </div>
                                     <div class="text-sm text-success-700 mt-1">
                                         API URL: <?= htmlspecialchars(parse_url($currentSettings['api_url'], PHP_URL_HOST) ?? 'N/A') ?>
+                                    </div>
+                                    <div class="text-sm text-success-700 mt-1">
+                                        User: <?= htmlspecialchars($_SESSION['user_email'] ?? 'Unknown') ?>
                                     </div>
                                 </div>
                             </div>
@@ -338,7 +348,10 @@ $currentSettings = getUserSettings();
                                 <div>
                                     <h4 class="font-semibold text-warning-800 mb-1">No Settings Configured</h4>
                                     <div class="text-sm text-warning-700">
-                                        Please fill out the form above to configure your WHMCS API settings.
+                                        Configure your API settings once and they'll be saved for future logins.
+                                    </div>
+                                    <div class="text-sm text-warning-700 mt-1">
+                                        User: <?= htmlspecialchars($_SESSION['user_email'] ?? 'Unknown') ?>
                                     </div>
                                 </div>
                             </div>
