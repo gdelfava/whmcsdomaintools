@@ -49,6 +49,7 @@ class Database {
         $sql = "
         CREATE TABLE IF NOT EXISTS domains (
             id INT AUTO_INCREMENT PRIMARY KEY,
+            user_email VARCHAR(255) NOT NULL,
             domain_id VARCHAR(255) NOT NULL,
             domain_name VARCHAR(255) NOT NULL,
             status VARCHAR(50) NOT NULL,
@@ -62,15 +63,17 @@ class Database {
             batch_number INT DEFAULT 1,
             last_synced TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            INDEX idx_user_email (user_email),
             INDEX idx_domain_name (domain_name),
             INDEX idx_status (status),
             INDEX idx_batch_number (batch_number),
             INDEX idx_last_synced (last_synced),
-            UNIQUE KEY unique_domain (domain_id)
+            UNIQUE KEY unique_user_domain (user_email, domain_id)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
         
         CREATE TABLE IF NOT EXISTS domain_nameservers (
             id INT AUTO_INCREMENT PRIMARY KEY,
+            user_email VARCHAR(255) NOT NULL,
             domain_id VARCHAR(255) NOT NULL,
             ns1 VARCHAR(255),
             ns2 VARCHAR(255),
@@ -78,8 +81,9 @@ class Database {
             ns4 VARCHAR(255),
             ns5 VARCHAR(255),
             last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-            FOREIGN KEY (domain_id) REFERENCES domains(domain_id) ON DELETE CASCADE,
-            INDEX idx_domain_id (domain_id)
+            INDEX idx_user_email (user_email),
+            INDEX idx_domain_id (domain_id),
+            UNIQUE KEY unique_user_domain (user_email, domain_id)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
         
         CREATE TABLE IF NOT EXISTS sync_logs (
@@ -99,6 +103,21 @@ class Database {
             INDEX idx_batch_number (batch_number),
             INDEX idx_sync_started (sync_started)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+        
+        CREATE TABLE IF NOT EXISTS user_settings (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            user_email VARCHAR(255) NOT NULL,
+            api_url VARCHAR(500) NOT NULL,
+            api_identifier TEXT NOT NULL,
+            api_secret TEXT NOT NULL,
+            default_ns1 VARCHAR(255) NOT NULL,
+            default_ns2 VARCHAR(255) NOT NULL,
+            logo_url TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            UNIQUE KEY unique_user_email (user_email),
+            INDEX idx_user_email (user_email)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
         ";
         
         try {
@@ -110,13 +129,13 @@ class Database {
         }
     }
     
-    public function insertDomain($domainData) {
+    public function insertDomain($userEmail, $domainData) {
         $sql = "
         INSERT INTO domains (
-            domain_id, domain_name, status, registrar, expiry_date, 
+            user_email, domain_id, domain_name, status, registrar, expiry_date, 
             registration_date, next_due_date, amount, currency, notes, batch_number
         ) VALUES (
-            :domain_id, :domain_name, :status, :registrar, :expiry_date,
+            :user_email, :domain_id, :domain_name, :status, :registrar, :expiry_date,
             :registration_date, :next_due_date, :amount, :currency, :notes, :batch_number
         ) ON DUPLICATE KEY UPDATE
             domain_name = VALUES(domain_name),
@@ -134,19 +153,20 @@ class Database {
         
         try {
             $stmt = $this->connection->prepare($sql);
-            return $stmt->execute($domainData);
+            $params = array_merge(['user_email' => $userEmail], $domainData);
+            return $stmt->execute($params);
         } catch (PDOException $e) {
             error_log("Error inserting domain: " . $e->getMessage());
             return false;
         }
     }
     
-    public function insertNameservers($domainId, $nameservers) {
+    public function insertNameservers($userEmail, $domainId, $nameservers) {
         $sql = "
         INSERT INTO domain_nameservers (
-            domain_id, ns1, ns2, ns3, ns4, ns5
+            user_email, domain_id, ns1, ns2, ns3, ns4, ns5
         ) VALUES (
-            :domain_id, :ns1, :ns2, :ns3, :ns4, :ns5
+            :user_email, :domain_id, :ns1, :ns2, :ns3, :ns4, :ns5
         ) ON DUPLICATE KEY UPDATE
             ns1 = VALUES(ns1),
             ns2 = VALUES(ns2),
@@ -159,6 +179,7 @@ class Database {
         try {
             $stmt = $this->connection->prepare($sql);
             return $stmt->execute([
+                'user_email' => $userEmail,
                 'domain_id' => $domainId,
                 'ns1' => $nameservers['ns1'] ?? null,
                 'ns2' => $nameservers['ns2'] ?? null,
@@ -172,11 +193,11 @@ class Database {
         }
     }
     
-    public function getDomains($page = 1, $perPage = 25, $search = '', $status = '', $orderBy = 'domain_name', $orderDir = 'ASC', $registrar = '') {
+    public function getDomains($userEmail, $page = 1, $perPage = 25, $search = '', $status = '', $orderBy = 'domain_name', $orderDir = 'ASC', $registrar = '') {
         $offset = ($page - 1) * $perPage;
         
-        $whereConditions = [];
-        $params = [];
+        $whereConditions = ["d.user_email = :user_email"];
+        $params = ['user_email' => $userEmail];
         
         if (!empty($search)) {
             $whereConditions[] = "(d.domain_name LIKE :search OR d.registrar LIKE :search2 OR d.status LIKE :search3)";
@@ -195,14 +216,14 @@ class Database {
             $params['registrar'] = $registrar;
         }
         
-        $whereClause = !empty($whereConditions) ? 'WHERE ' . implode(' AND ', $whereConditions) : '';
+        $whereClause = 'WHERE ' . implode(' AND ', $whereConditions);
         
         $sql = "
         SELECT 
             d.*,
             dn.ns1, dn.ns2, dn.ns3, dn.ns4, dn.ns5
         FROM domains d
-        LEFT JOIN domain_nameservers dn ON d.domain_id = dn.domain_id
+        LEFT JOIN domain_nameservers dn ON d.domain_id = dn.domain_id AND dn.user_email = d.user_email
         $whereClause
         ORDER BY d.$orderBy $orderDir
         LIMIT :limit OFFSET :offset
@@ -225,9 +246,9 @@ class Database {
         }
     }
     
-    public function getDomainCount($search = '', $status = '', $registrar = '') {
-        $whereConditions = [];
-        $params = [];
+    public function getDomainCount($userEmail, $search = '', $status = '', $registrar = '') {
+        $whereConditions = ["user_email = :user_email"];
+        $params = ['user_email' => $userEmail];
         
         if (!empty($search)) {
             $whereConditions[] = "(domain_name LIKE :search OR registrar LIKE :search2 OR status LIKE :search3)";
@@ -246,7 +267,7 @@ class Database {
             $params['registrar'] = $registrar;
         }
         
-        $whereClause = !empty($whereConditions) ? 'WHERE ' . implode(' AND ', $whereConditions) : '';
+        $whereClause = 'WHERE ' . implode(' AND ', $whereConditions);
         
         $sql = "SELECT COUNT(*) as total FROM domains $whereClause";
         
@@ -264,7 +285,7 @@ class Database {
         }
     }
     
-    public function getDomainStats() {
+    public function getDomainStats($userEmail) {
         $sql = "
         SELECT 
             COUNT(*) as total_domains,
@@ -273,11 +294,12 @@ class Database {
             SUM(CASE WHEN status IN ('Pending', 'PendingTransfer', 'PendingRegistration') THEN 1 ELSE 0 END) as pending_domains,
             SUM(CASE WHEN status = 'Suspended' THEN 1 ELSE 0 END) as suspended_domains
         FROM domains
+        WHERE user_email = :user_email
         ";
         
         try {
             $stmt = $this->connection->prepare($sql);
-            $stmt->execute();
+            $stmt->execute(['user_email' => $userEmail]);
             return $stmt->fetch();
         } catch (PDOException $e) {
             error_log("Error getting domain stats: " . $e->getMessage());
@@ -393,15 +415,112 @@ class Database {
         }
     }
     
-    public function getUniqueRegistrars() {
-        $sql = "SELECT DISTINCT registrar FROM domains WHERE registrar IS NOT NULL AND registrar != '' ORDER BY registrar ASC";
+    public function getUniqueRegistrars($userEmail) {
+        $sql = "SELECT DISTINCT registrar FROM domains WHERE user_email = :user_email AND registrar IS NOT NULL AND registrar != '' ORDER BY registrar ASC";
+        
+        try {
+            $stmt = $this->connection->prepare($sql);
+            $stmt->execute(['user_email' => $userEmail]);
+            return $stmt->fetchAll(PDO::FETCH_COLUMN);
+        } catch (PDOException $e) {
+            error_log("Error getting unique registrars: " . $e->getMessage());
+            return [];
+        }
+    }
+    
+    // User Settings Methods
+    public function saveUserSettings($userEmail, $settings) {
+        $sql = "
+        INSERT INTO user_settings (
+            user_email, api_url, api_identifier, api_secret, 
+            default_ns1, default_ns2, logo_url
+        ) VALUES (
+            :user_email, :api_url, :api_identifier, :api_secret,
+            :default_ns1, :default_ns2, :logo_url
+        ) ON DUPLICATE KEY UPDATE
+            api_url = VALUES(api_url),
+            api_identifier = VALUES(api_identifier),
+            api_secret = VALUES(api_secret),
+            default_ns1 = VALUES(default_ns1),
+            default_ns2 = VALUES(default_ns2),
+            logo_url = VALUES(logo_url),
+            updated_at = CURRENT_TIMESTAMP
+        ";
+        
+        try {
+            $stmt = $this->connection->prepare($sql);
+            return $stmt->execute([
+                'user_email' => $userEmail,
+                'api_url' => $settings['api_url'],
+                'api_identifier' => $settings['api_identifier'],
+                'api_secret' => $settings['api_secret'],
+                'default_ns1' => $settings['default_ns1'],
+                'default_ns2' => $settings['default_ns2'],
+                'logo_url' => $settings['logo_url'] ?? ''
+            ]);
+        } catch (PDOException $e) {
+            error_log("Error saving user settings: " . $e->getMessage());
+            return false;
+        }
+    }
+    
+    public function getUserSettings($userEmail) {
+        $sql = "
+        SELECT * FROM user_settings 
+        WHERE user_email = :user_email
+        ";
+        
+        try {
+            $stmt = $this->connection->prepare($sql);
+            $stmt->execute(['user_email' => $userEmail]);
+            return $stmt->fetch();
+        } catch (PDOException $e) {
+            error_log("Error getting user settings: " . $e->getMessage());
+            return null;
+        }
+    }
+    
+    public function hasUserSettings($userEmail) {
+        $sql = "
+        SELECT COUNT(*) as count FROM user_settings 
+        WHERE user_email = :user_email
+        ";
+        
+        try {
+            $stmt = $this->connection->prepare($sql);
+            $stmt->execute(['user_email' => $userEmail]);
+            $result = $stmt->fetch();
+            return ($result['count'] ?? 0) > 0;
+        } catch (PDOException $e) {
+            error_log("Error checking user settings: " . $e->getMessage());
+            return false;
+        }
+    }
+    
+    public function deleteUserSettings($userEmail) {
+        $sql = "
+        DELETE FROM user_settings 
+        WHERE user_email = :user_email
+        ";
+        
+        try {
+            $stmt = $this->connection->prepare($sql);
+            return $stmt->execute(['user_email' => $userEmail]);
+        } catch (PDOException $e) {
+            error_log("Error deleting user settings: " . $e->getMessage());
+            return false;
+        }
+    }
+    
+    public function getAllUserSettings() {
+        $sql = "SELECT * FROM user_settings ORDER BY updated_at DESC";
         
         try {
             $stmt = $this->connection->prepare($sql);
             $stmt->execute();
-            return $stmt->fetchAll(PDO::FETCH_COLUMN);
+            return $stmt->fetchAll();
         } catch (PDOException $e) {
-            error_log("Error getting unique registrars: " . $e->getMessage());
+            error_log("Error getting all user settings: " . $e->getMessage());
             return [];
         }
     }

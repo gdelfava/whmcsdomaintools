@@ -34,10 +34,10 @@ try {
     require_once 'config.php';
     require_once 'api.php';
     require_once 'database.php';
-    require_once 'user_settings.php';
+    require_once 'user_settings_db.php';
 
     // Get user settings
-    $userSettings = new UserSettings();
+    $userSettings = new UserSettingsDB();
     $settings = $userSettings->loadSettings($userEmail);
     
     if (!$settings) {
@@ -114,10 +114,10 @@ try {
             ];
 
             // Check if domain exists
-            $existingDomain = $db->getDomains(1, 1, $domain['domainname']);
+            $existingDomain = $db->getDomains($userEmail, 1, 1, $domain['domainname']);
             
             // Insert/update domain
-            if ($db->insertDomain($domainData)) {
+            if ($db->insertDomain($userEmail, $domainData)) {
                 $syncData['domains_processed']++;
                 
                 if (empty($existingDomain)) {

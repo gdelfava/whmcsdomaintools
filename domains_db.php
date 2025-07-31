@@ -43,9 +43,10 @@ $domainStats = [];
 
 if (!isset($error)) {
     try {
-        $domains = $db->getDomains($page, $perPage, $search, $status, $orderBy, $orderDir);
-        $totalDomains = $db->getDomainCount($search, $status);
-        $domainStats = $db->getDomainStats();
+        $userEmail = $_SESSION['user_email'] ?? '';
+        $domains = $db->getDomains($userEmail, $page, $perPage, $search, $status, $orderBy, $orderDir);
+        $totalDomains = $db->getDomainCount($userEmail, $search, $status);
+        $domainStats = $db->getDomainStats($userEmail);
     } catch (Exception $e) {
         $error = "Failed to fetch domains: " . $e->getMessage();
     }

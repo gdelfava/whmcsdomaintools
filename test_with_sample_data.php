@@ -103,15 +103,17 @@ echo "<h2>Inserting Sample Data...</h2>";
 $insertedCount = 0;
 $errorCount = 0;
 
+$userEmail = $_SESSION['user_email'] ?? 'test@example.com';
+
 foreach ($sampleDomains as $domain) {
     try {
         // Insert domain
-        if ($db->insertDomain($domain)) {
+        if ($db->insertDomain($userEmail, $domain)) {
             $insertedCount++;
             
             // Insert nameservers if available
             if (isset($sampleNameservers[$domain['domain_id']])) {
-                $db->insertNameservers($domain['domain_id'], $sampleNameservers[$domain['domain_id']]);
+                $db->insertNameservers($userEmail, $domain['domain_id'], $sampleNameservers[$domain['domain_id']]);
             }
         } else {
             $errorCount++;
@@ -135,11 +137,11 @@ echo "</div>";
 echo "<h2>Testing Database Queries...</h2>";
 
 // Test 1: Get domain count
-$totalDomains = $db->getDomainCount();
+$totalDomains = $db->getDomainCount($userEmail);
 echo "<p><strong>Total domains in database:</strong> $totalDomains</p>";
 
 // Test 2: Get domain statistics
-$stats = $db->getDomainStats();
+$stats = $db->getDomainStats($userEmail);
 echo "<h3>Domain Statistics:</h3>";
 echo "<ul>";
 echo "<li><strong>Total Domains:</strong> " . ($stats['total_domains'] ?? 0) . "</li>";
@@ -150,7 +152,7 @@ echo "<li><strong>Suspended Domains:</strong> " . ($stats['suspended_domains'] ?
 echo "</ul>";
 
 // Test 3: Get domains with search
-$domains = $db->getDomains(1, 10, 'example', '', 'domain_name', 'ASC');
+$domains = $db->getDomains($userEmail, 1, 10, 'example', '', 'domain_name', 'ASC');
 echo "<h3>Search Results for 'example':</h3>";
 if (!empty($domains)) {
     echo "<ul>";
@@ -163,7 +165,7 @@ if (!empty($domains)) {
 }
 
 // Test 4: Get domains by status
-$activeDomains = $db->getDomains(1, 10, '', 'Active', 'domain_name', 'ASC');
+$activeDomains = $db->getDomains($userEmail, 1, 10, '', 'Active', 'domain_name', 'ASC');
 echo "<h3>Active Domains:</h3>";
 if (!empty($activeDomains)) {
     echo "<ul>";

@@ -1,6 +1,6 @@
 <?php
 require_once 'auth.php';
-require_once 'user_settings.php';
+require_once 'user_settings_db.php';
 
 $authError = '';
 $authSuccess = '';

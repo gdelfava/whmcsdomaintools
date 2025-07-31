@@ -1,7 +1,7 @@
 <?php
 require_once 'auth.php';
 require_once 'database.php';
-require_once 'user_settings.php';
+require_once 'user_settings_db.php';
 
 // Require authentication
 requireAuth();

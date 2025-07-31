@@ -33,37 +33,24 @@ if (empty($userEmail)) {
 }
 
 try {
-    // Minimal config loading
+    // Load database and settings
     require_once 'config.php';
+    require_once 'database.php';
+    require_once 'user_settings_db.php';
     
-    // Get user settings manually (avoid complex includes)
-    $settingsFile = 'user_settings/' . md5($userEmail) . '.json';
-    if (!file_exists($settingsFile)) {
-        echo json_encode(['success' => false, 'error' => 'No settings file found']);
-        exit;
-    }
+    // Get user settings from database
+    $userSettings = new UserSettingsDB();
+    $settings = $userSettings->loadSettings($userEmail);
     
-    $settings = json_decode(file_get_contents($settingsFile), true);
     if (!$settings) {
-        echo json_encode(['success' => false, 'error' => 'Could not load settings']);
+        echo json_encode(['success' => false, 'error' => 'No settings found for user']);
         exit;
-    }
-    
-    // Simple decryption function
-    function simpleDecrypt($data) {
-        $key = hash('sha256', ($_SERVER['SERVER_NAME'] ?? 'default_server') . (defined('ENCRYPTION_KEY') ? ENCRYPTION_KEY : 'default_encryption_key_2024'));
-        $cipher = "AES-256-CBC";
-        $data = base64_decode($data);
-        $ivlen = openssl_cipher_iv_length($cipher);
-        $iv = substr($data, 0, $ivlen);
-        $encrypted = substr($data, $ivlen);
-        return openssl_decrypt($encrypted, $cipher, $key, 0, $iv);
     }
     
     // Decrypt settings
     $apiUrl = $settings['api_url'];
-    $apiIdentifier = simpleDecrypt($settings['api_identifier']);
-    $apiSecret = simpleDecrypt($settings['api_secret']);
+    $apiIdentifier = $userSettings->decrypt($settings['api_identifier']);
+    $apiSecret = $userSettings->decrypt($settings['api_secret']);
     
     // Calculate offset
     $offset = ($batchNumber - 1) * $batchSize;
@@ -177,10 +164,11 @@ try {
                 continue;
             }
             
-            // Check if domain already exists
-            $checkSql = "SELECT id, domain_id, domain_name, status FROM domains WHERE domain_id = :domain_id OR domain_name = :domain_name LIMIT 1";
+            // Check if domain already exists for current user
+            $checkSql = "SELECT id, domain_id, domain_name, status FROM domains WHERE user_email = :user_email AND (domain_id = :domain_id OR domain_name = :domain_name) LIMIT 1";
             $checkStmt = $pdo->prepare($checkSql);
             $checkStmt->execute([
+                'user_email' => $userEmail,
                 'domain_id' => $domainId,
                 'domain_name' => $domainName
             ]);
@@ -216,8 +204,9 @@ try {
                     notes = :notes,
                     batch_number = :batch_number,
                     last_synced = NOW()
-                WHERE domain_id = :domain_id";
+                WHERE user_email = :user_email AND domain_id = :domain_id";
                 
+                $domainData['user_email'] = $userEmail;
                 $stmt = $pdo->prepare($sql);
                 $result = $stmt->execute($domainData);
                 
@@ -228,15 +217,16 @@ try {
             } else {
                 // New domain - insert it
                 $sql = "INSERT INTO domains (
-                    domain_id, domain_name, status, registrar, expiry_date, 
+                    user_email, domain_id, domain_name, status, registrar, expiry_date, 
                     registration_date, next_due_date, amount, currency, notes, batch_number,
                     last_synced
                 ) VALUES (
-                    :domain_id, :domain_name, :status, :registrar, :expiry_date,
+                    :user_email, :domain_id, :domain_name, :status, :registrar, :expiry_date,
                     :registration_date, :next_due_date, :amount, :currency, :notes, :batch_number,
                     NOW()
                 )";
                 
+                $domainData['user_email'] = $userEmail;
                 $stmt = $pdo->prepare($sql);
                 $result = $stmt->execute($domainData);
                 
@@ -248,10 +238,10 @@ try {
                 
                 // Fetch and store nameservers for this domain
                 if (!empty($domainId) && $result) {
-                    // First check if nameservers already exist
-                    $checkNsSql = "SELECT domain_id FROM domain_nameservers WHERE domain_id = :domain_id LIMIT 1";
+                    // First check if nameservers already exist for current user
+                    $checkNsSql = "SELECT domain_id FROM domain_nameservers WHERE user_email = :user_email AND domain_id = :domain_id LIMIT 1";
                     $checkNsStmt = $pdo->prepare($checkNsSql);
-                    $checkNsStmt->execute(['domain_id' => $domainId]);
+                    $checkNsStmt->execute(['user_email' => $userEmail, 'domain_id' => $domainId]);
                     $existingNs = $checkNsStmt->fetch(PDO::FETCH_ASSOC);
                     
                     // Only fetch nameservers if we need to add or update them
@@ -275,16 +265,17 @@ try {
                                 ns4 = :ns4,
                                 ns5 = :ns5,
                                 last_updated = NOW()
-                            WHERE domain_id = :domain_id";
+                            WHERE user_email = :user_email AND domain_id = :domain_id";
                         } else {
                             // Insert new nameservers
                             $nsSql = "INSERT INTO domain_nameservers (
-                                domain_id, ns1, ns2, ns3, ns4, ns5, last_updated
+                                user_email, domain_id, ns1, ns2, ns3, ns4, ns5, last_updated
                             ) VALUES (
-                                :domain_id, :ns1, :ns2, :ns3, :ns4, :ns5, NOW()
+                                :user_email, :domain_id, :ns1, :ns2, :ns3, :ns4, :ns5, NOW()
                             )";
                         }
                         
+                        $nsData['user_email'] = $userEmail;
                         $nsStmt = $pdo->prepare($nsSql);
                         $nsStmt->execute($nsData);
                     }

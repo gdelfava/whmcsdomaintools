@@ -2,7 +2,7 @@
 require_once 'auth.php';
 require_once 'api.php';
 require_once 'database.php';
-require_once 'user_settings.php';
+require_once 'user_settings_db.php';
 
 class DomainSync {
     private $db;
@@ -12,7 +12,7 @@ class DomainSync {
     public function __construct($userEmail) {
         $this->db = Database::getInstance();
         $this->userEmail = $userEmail;
-        $this->userSettings = getUserSettings();
+        $this->userSettings = getUserSettingsDB();
         
         if (!$this->userSettings) {
             throw new Exception("User settings not found");
@@ -123,7 +123,7 @@ class DomainSync {
         ];
         
         // Insert/update domain in database
-        if (!$this->db->insertDomain($domainData)) {
+        if (!$this->db->insertDomain($this->userEmail, $domainData)) {
             throw new Exception("Failed to insert domain: " . $domain['domainname']);
         }
         
@@ -151,7 +151,7 @@ class DomainSync {
                     'ns5' => $nsResponse['ns5'] ?? null
                 ];
                 
-                $this->db->insertNameservers($domainId, $nameservers);
+                $this->db->insertNameservers($this->userEmail, $domainId, $nameservers);
             }
         } catch (Exception $e) {
             // Log error but don't fail the entire sync

@@ -1,6 +1,6 @@
 <?php
 require_once 'auth.php';
-require_once 'user_settings.php';
+require_once 'user_settings_db.php';
 
 // Require authentication
 requireAuth();
@@ -35,13 +35,13 @@ if (isset($_POST['save_settings'])) {
             'logo_url' => trim($_POST['logo_url'] ?? '')
         ];
         
-        $userSettings = new UserSettings();
+        $userSettings = new UserSettingsDB();
         if ($userSettings->saveSettings($_SESSION['user_email'], $settings)) {
-            $message = '✅ Settings saved successfully! Your API data will persist across login sessions.';
+            $message = '✅ Settings saved successfully! Your API data will persist across login sessions and devices.';
             $messageType = 'success';
             
             // Log successful save
-            error_log('Settings saved successfully for user: ' . $_SESSION['user_email']);
+            error_log('Settings saved successfully to database for user: ' . $_SESSION['user_email']);
             
             // If there's a redirect parameter, redirect after saving
             if (isset($_GET['redirect']) && !empty($_GET['redirect'])) {
@@ -50,9 +50,9 @@ if (isset($_POST['save_settings'])) {
                 exit;
             }
         } else {
-            $message = '❌ Failed to save settings. Please check file permissions on user_settings/ directory.';
+            $message = '❌ Failed to save settings. Please check database connection and permissions.';
             $messageType = 'error';
-            error_log('Failed to save settings for user: ' . $_SESSION['user_email']);
+            error_log('Failed to save settings to database for user: ' . $_SESSION['user_email']);
         }
     } else {
         $message = '⚠️ Please fill in all required fields.';
@@ -62,7 +62,7 @@ if (isset($_POST['save_settings'])) {
 
 // Handle settings test
 if (isset($_POST['test_settings'])) {
-    $userSettings = getUserSettings();
+    $userSettings = getUserSettingsDB();
     if ($userSettings) {
         // Include API functions to test the connection
         require_once 'api.php';
@@ -91,7 +91,16 @@ if (isset($_POST['test_settings'])) {
 }
 
 // Load existing settings
-$currentSettings = getUserSettings();
+$currentSettings = getUserSettingsDB();
+
+// Debug: If no settings found in database, try old system
+if (!$currentSettings) {
+    require_once 'user_settings.php';
+    $currentSettings = getUserSettings();
+    if ($currentSettings) {
+        error_log('Settings loaded from JSON file as fallback');
+    }
+}
 ?>
 
 <!DOCTYPE html>
@@ -111,7 +120,7 @@ $currentSettings = getUserSettings();
             <!-- Navigation Bar -->
             <nav class="navbar">
                 <div class="navbar-brand">
-                    <img src="<?= htmlspecialchars(getLogoUrl()) ?>" alt="Logo" onerror="this.style.display='none'">
+                    <img src="<?= htmlspecialchars(getLogoUrlDB()) ?>" alt="Logo" onerror="this.style.display='none'">
                     <div>
                         <div class="font-semibold text-gray-900">WHMCS Domain Tools</div>
                         <div class="text-xs text-gray-500">API Configuration</div>

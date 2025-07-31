@@ -60,10 +60,17 @@ try {
     
 
     
-    // Check if domain already exists
+    // Get current user email
+    $userEmail = $_SESSION['user_email'] ?? '';
+    if (empty($userEmail)) {
+        echo json_encode(['success' => false, 'error' => 'User not authenticated']);
+        exit;
+    }
+    
+    // Check if domain already exists for this user
     $pdo = $db->getConnection();
-    $checkStmt = $pdo->prepare("SELECT id FROM domains WHERE domain_name = :domain_name LIMIT 1");
-    $checkStmt->execute(['domain_name' => $domainName]);
+    $checkStmt = $pdo->prepare("SELECT id FROM domains WHERE user_email = :user_email AND domain_name = :domain_name LIMIT 1");
+    $checkStmt->execute(['user_email' => $userEmail, 'domain_name' => $domainName]);
     
     if ($checkStmt->fetch()) {
         echo json_encode(['success' => false, 'error' => 'Domain already exists in database']);
@@ -73,19 +80,8 @@ try {
     // Generate a unique domain ID (similar to WHMCS format)
     $domainId = time() . rand(100, 999);
     
-    // Insert domain into database
-    $sql = "INSERT INTO domains (
-        domain_id, domain_name, registrar, status, registration_date, 
-        expiry_date, next_due_date, amount, currency, notes, 
-        created_at
-    ) VALUES (
-        :domain_id, :domain_name, :registrar, :status, :registration_date,
-        :expiry_date, :next_due_date, :amount, :currency, :notes,
-        NOW()
-    )";
-    
-    $stmt = $pdo->prepare($sql);
-    $result = $stmt->execute([
+    // Insert domain into database using the multi-user method
+    $domainData = [
         'domain_id' => $domainId,
         'domain_name' => $domainName,
         'registrar' => $registrar,
@@ -95,8 +91,11 @@ try {
         'next_due_date' => $nextDueDate,
         'amount' => $amount,
         'currency' => $currency,
-        'notes' => $notes
-    ]);
+        'notes' => $notes,
+        'batch_number' => 1
+    ];
+    
+    $result = $db->insertDomain($userEmail, $domainData);
     
     if (!$result) {
         echo json_encode(['success' => false, 'error' => 'Failed to insert domain into database']);
@@ -120,17 +119,8 @@ try {
                 'ns5' => $nameserverArray[4] ?? null
             ];
             
-            $nsSql = "INSERT INTO domain_nameservers (domain_id, ns1, ns2, ns3, ns4, ns5) VALUES (:domain_id, :ns1, :ns2, :ns3, :ns4, :ns5)";
-            $nsStmt = $pdo->prepare($nsSql);
-            
-            $nsStmt->execute([
-                'domain_id' => $domainId, // Use domain_id, not domainDbId
-                'ns1' => $nsData['ns1'],
-                'ns2' => $nsData['ns2'],
-                'ns3' => $nsData['ns3'],
-                'ns4' => $nsData['ns4'],
-                'ns5' => $nsData['ns5']
-            ]);
+            // Use the multi-user method to insert nameservers
+            $db->insertNameservers($userEmail, $domainId, $nsData);
         }
     }
     

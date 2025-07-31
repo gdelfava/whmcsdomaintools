@@ -25,11 +25,12 @@ try {
     }
     
     $domainId = trim($_POST['domain_id']);
+    $userEmail = $_SESSION['user_email'] ?? '';
     $pdo = $db->getConnection();
     
-    // Check if domain exists
-    $checkStmt = $pdo->prepare("SELECT id, domain_name FROM domains WHERE domain_id = :domain_id LIMIT 1");
-    $checkStmt->execute(['domain_id' => $domainId]);
+    // Check if domain exists for current user
+    $checkStmt = $pdo->prepare("SELECT id, domain_name FROM domains WHERE user_email = :user_email AND domain_id = :domain_id LIMIT 1");
+    $checkStmt->execute(['user_email' => $userEmail, 'domain_id' => $domainId]);
     $domain = $checkStmt->fetch(PDO::FETCH_ASSOC);
     
     if (!$domain) {
@@ -44,12 +45,12 @@ try {
     
     try {
         // Delete nameserver records first (foreign key constraint)
-        $deleteNsStmt = $pdo->prepare("DELETE FROM domain_nameservers WHERE domain_id = :domain_id");
-        $deleteNsStmt->execute(['domain_id' => $domainId]);
+        $deleteNsStmt = $pdo->prepare("DELETE FROM domain_nameservers WHERE user_email = :user_email AND domain_id = :domain_id");
+        $deleteNsStmt->execute(['user_email' => $userEmail, 'domain_id' => $domainId]);
         
         // Delete domain record
-        $deleteDomainStmt = $pdo->prepare("DELETE FROM domains WHERE domain_id = :domain_id");
-        $result = $deleteDomainStmt->execute(['domain_id' => $domainId]);
+        $deleteDomainStmt = $pdo->prepare("DELETE FROM domains WHERE user_email = :user_email AND domain_id = :domain_id");
+        $result = $deleteDomainStmt->execute(['user_email' => $userEmail, 'domain_id' => $domainId]);
         
         if (!$result) {
             throw new Exception('Failed to delete domain from database');

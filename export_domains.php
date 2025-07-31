@@ -1,7 +1,7 @@
 <?php
 require_once 'auth.php';
 require_once 'api.php';
-require_once 'user_settings.php';
+require_once 'user_settings_db.php';
 
 // Require authentication
 requireAuth();
@@ -18,7 +18,7 @@ if (!userHasSettings()) {
 }
 
 // Load user settings
-$userSettings = getUserSettings();
+    $userSettings = getUserSettingsDB();
 if (!$userSettings) {
     $message = 'Unable to load your API settings. Please configure them first.';
 }

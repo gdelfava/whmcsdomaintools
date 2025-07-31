@@ -1,7 +1,7 @@
 <?php
 require_once 'auth.php';
 require_once 'api.php';
-require_once 'user_settings.php';
+require_once 'user_settings_db.php';
 require_once 'cache.php';
 require_once 'database.php';
 
@@ -9,8 +9,8 @@ require_once 'database.php';
 requireAuth();
 
 // Check if user has settings configured
-$hasSettings = userHasSettings();
-$settingsValidation = validateSettingsCompleteness();
+$hasSettings = userHasSettingsDB();
+$settingsValidation = validateSettingsCompletenessDB();
 
 // Handle logout
 if (isset($_POST['logout'])) {
@@ -41,7 +41,7 @@ if (isset($_POST['save_settings'])) {
             'logo_url' => trim($_POST['logo_url'] ?? '')
         ];
         
-        $userSettings = new UserSettings();
+        $userSettings = new UserSettingsDB();
         if ($userSettings->saveSettings($_SESSION['user_email'], $settings)) {
             $message = 'Settings saved successfully!';
             $messageType = 'success';
@@ -50,8 +50,8 @@ if (isset($_POST['save_settings'])) {
             clearUserCache($_SESSION['user_email']);
             
             // Refresh settings status
-            $hasSettings = userHasSettings();
-            $settingsValidation = validateSettingsCompleteness();
+            $hasSettings = userHasSettingsDB();
+            $settingsValidation = validateSettingsCompletenessDB();
         } else {
             $message = 'Failed to save settings. Please try again.';
             $messageType = 'error';
@@ -64,7 +64,7 @@ if (isset($_POST['save_settings'])) {
 
 // Handle settings test
 if (isset($_POST['test_settings'])) {
-    $userSettings = getUserSettings();
+    $userSettings = getUserSettingsDB();
     if ($userSettings) {
         // Test API connection
         $testResponse = curlCall($userSettings['api_url'], [
@@ -90,10 +90,23 @@ if (isset($_POST['test_settings'])) {
 }
 
 // Load existing settings
-$currentSettings = getUserSettings();
+$currentSettings = getUserSettingsDB();
 
 // Determine current view
 $currentView = $_GET['view'] ?? 'dashboard';
+
+// Initialize uniqueRegistrars for all views
+$uniqueRegistrars = [];
+try {
+    $db = Database::getInstance();
+    $userEmail = $_SESSION['user_email'] ?? '';
+    if (!empty($userEmail)) {
+        $uniqueRegistrars = $db->getUniqueRegistrars($userEmail);
+    }
+} catch (Exception $e) {
+    // Fallback to empty array if database fails
+    $uniqueRegistrars = [];
+}
 
 // Handle nameserver updates
 $updateMessage = '';
@@ -112,11 +125,11 @@ if ($currentView === 'nameservers') {
     }
     
     // Check if user has configured their API settings
-    if (!userHasSettings()) {
+    if (!userHasSettingsDB()) {
         $updateMessage = 'Please configure your API settings first.';
     } else {
         // Load user settings
-        $userSettings = getUserSettings();
+        $userSettings = getUserSettingsDB();
         if (!$userSettings) {
             $updateMessage = 'Unable to load your API settings. Please configure them first.';
         } else {
@@ -331,11 +344,11 @@ $exportResults = [];
 
 if ($currentView === 'export') {
     // Check if user has configured their API settings
-    if (!userHasSettings()) {
+    if (!userHasSettingsDB()) {
         $exportMessage = 'Please configure your API settings first.';
     } else {
         // Load user settings
-        $userSettings = getUserSettings();
+        $userSettings = getUserSettingsDB();
         if (!$userSettings) {
             $exportMessage = 'Unable to load your API settings. Please configure them first.';
         }
@@ -434,8 +447,8 @@ $dashboardStats = [
 ];
 
 // If user has settings, get real domain data
-if (userHasSettings()) {
-    $userSettings = getUserSettings();
+if (userHasSettingsDB()) {
+    $userSettings = getUserSettingsDB();
     if ($userSettings) {
         $response = getAllDomains($userSettings['api_url'], $userSettings['api_identifier'], $userSettings['api_secret']);
         if (isset($response['domains']['domain']) && is_array($response['domains']['domain'])) {
@@ -472,8 +485,8 @@ if (userHasSettings()) {
 // Get recent domains for dashboard
 $recentProjects = [];
 
-if (userHasSettings()) {
-    $userSettings = getUserSettings();
+if (userHasSettingsDB()) {
+    $userSettings = getUserSettingsDB();
     if ($userSettings) {
         $response = getAllDomains($userSettings['api_url'], $userSettings['api_identifier'], $userSettings['api_secret']);
         if (isset($response['domains']['domain']) && is_array($response['domains']['domain'])) {
@@ -551,7 +564,7 @@ function checkTablesCreated() {
 }
 
 function checkApiSettingsComplete() {
-    $userSettings = getUserSettings();
+    $userSettings = getUserSettingsDB();
     if (!$userSettings) {
         return false;
     }
@@ -586,8 +599,8 @@ $systemStatus = [];
 // Get server health data
 $serverHealth = [];
 
-if (userHasSettings()) {
-    $userSettings = getUserSettings();
+if (userHasSettingsDB()) {
+    $userSettings = getUserSettingsDB();
     if ($userSettings) {
         // Test API connection
         $testResponse = testApiConnection($userSettings['api_url'], $userSettings['api_identifier'], $userSettings['api_secret']);
@@ -694,12 +707,14 @@ $registrarsData = [];
 
 try {
     $db = Database::getInstance();
+    $userEmail = $_SESSION['user_email'] ?? '';
     
-    // Get domain status distribution from database
-    $statusQuery = "SELECT status, COUNT(*) as count FROM domains GROUP BY status";
-    $statusResult = $db->getConnection()->query($statusQuery);
+    // Get domain status distribution from database for current user
+    $statusQuery = "SELECT status, COUNT(*) as count FROM domains WHERE user_email = ? GROUP BY status";
+    $statusStmt = $db->getConnection()->prepare($statusQuery);
+    $statusStmt->execute([$userEmail]);
     
-    while ($row = $statusResult->fetch(PDO::FETCH_ASSOC)) {
+    while ($row = $statusStmt->fetch(PDO::FETCH_ASSOC)) {
         $status = ucfirst(strtolower($row['status'])); // Normalize status
         $count = (int)$row['count'];
         
@@ -710,13 +725,14 @@ try {
         }
     }
     
-    // Get registrars data from database
-    $registrarQuery = "SELECT registrar, COUNT(*) as count FROM domains GROUP BY registrar ORDER BY count DESC LIMIT 5";
-    $registrarResult = $db->getConnection()->query($registrarQuery);
+    // Get registrars data from database for current user
+    $registrarQuery = "SELECT registrar, COUNT(*) as count FROM domains WHERE user_email = ? GROUP BY registrar ORDER BY count DESC LIMIT 5";
+    $registrarStmt = $db->getConnection()->prepare($registrarQuery);
+    $registrarStmt->execute([$userEmail]);
     
     $totalDomains = array_sum($domainStatusStats);
     
-    while ($row = $registrarResult->fetch(PDO::FETCH_ASSOC)) {
+    while ($row = $registrarStmt->fetch(PDO::FETCH_ASSOC)) {
         $registrar = $row['registrar'] ?: 'Unknown';
         $count = (int)$row['count'];
         $percentage = $totalDomains > 0 ? round(($count / $totalDomains) * 100, 1) : 0;
@@ -763,15 +779,16 @@ if ($currentView === 'database_view') {
         $dbOrderDir = strtoupper($dbOrderDir) === 'DESC' ? 'DESC' : 'ASC';
 
         // Get domains from database
-        $databaseViewDomains = $db->getDomains($dbPage, $dbPerPage, $dbSearch, $dbStatus, $dbOrderBy, $dbOrderDir, $dbRegistrar);
-        $databaseViewTotalDomains = $db->getDomainCount($dbSearch, $dbStatus, $dbRegistrar);
-        $databaseViewDomainStats = $db->getDomainStats();
+        $userEmail = $_SESSION['user_email'] ?? '';
+        $databaseViewDomains = $db->getDomains($userEmail, $dbPage, $dbPerPage, $dbSearch, $dbStatus, $dbOrderBy, $dbOrderDir, $dbRegistrar);
+        $databaseViewTotalDomains = $db->getDomainCount($userEmail, $dbSearch, $dbStatus, $dbRegistrar);
+        $databaseViewDomainStats = $db->getDomainStats($userEmail);
         
         // Get last sync information
-        $databaseViewLastSync = $db->getLastSyncInfo($_SESSION['user_email'] ?? '');
+        $databaseViewLastSync = $db->getLastSyncInfo($userEmail);
         
         // Get unique registrars for the edit form
-        $databaseViewUniqueRegistrars = $db->getUniqueRegistrars();
+        $databaseViewUniqueRegistrars = $db->getUniqueRegistrars($userEmail);
         
     } catch (Exception $e) {
         $databaseViewError = "Failed to fetch domains: " . $e->getMessage();
@@ -785,7 +802,7 @@ $syncViewDomainStats = [];
 
 if ($currentView === 'sync') {
     // Check if user has configured their API settings
-    if (!userHasSettings()) {
+    if (!userHasSettingsDB()) {
         $syncViewError = "Please configure API settings first";
     } else {
         try {
@@ -805,8 +822,8 @@ if ($currentView === 'sync') {
 }
 
 // Get income and orders stats from API (keeping this for now)
-if (userHasSettings()) {
-    $userSettings = getUserSettings();
+if (userHasSettingsDB()) {
+    $userSettings = getUserSettingsDB();
     if ($userSettings) {
         // Use caching for stats data (refresh every 5 minutes)
         $userEmail = $_SESSION['user_email'] ?? 'unknown';
@@ -898,7 +915,7 @@ if (userHasSettings()) {
         <div class="lg:hidden fixed inset-0 bg-black bg-opacity-50 z-30 hidden" id="sidebar-overlay"></div>
         
         <!-- Sidebar -->
-        <div class="w-64 bg-white border-r border-gray-200 flex flex-col lg:translate-x-0 -translate-x-full transition-transform duration-300 fixed lg:relative z-40 h-full">
+        <div class="w-80 bg-white border-r border-gray-200 flex flex-col lg:translate-x-0 -translate-x-full transition-transform duration-300 fixed lg:relative z-40 h-full">
             <!-- Logo -->
             <div class="p-6 border-b border-gray-200">
                 <div class="flex items-center space-x-3">
@@ -1043,9 +1060,14 @@ if (userHasSettings()) {
             <!-- Header -->
             <header class="bg-white border-b border-gray-200 px-6 py-4">
                 <div class="flex items-center justify-between">
+                    <!-- Mobile Menu Button -->
+                    <button class="lg:hidden p-2 text-gray-400 hover:text-gray-600 transition-colors" id="mobile-menu-button">
+                        <i data-lucide="menu" class="w-5 h-5"></i>
+                    </button>
+                    
                     <!-- Logo -->
                     <div class="flex items-center">
-                        <img src="<?= htmlspecialchars(getLogoUrl()) ?>" 
+                        <img src="<?= htmlspecialchars(getLogoUrlDB()) ?>" 
                              alt="Logo" 
                              class="h-8 max-w-full object-contain"
                              onerror="this.style.display='none';">
@@ -1848,14 +1870,15 @@ if (userHasSettings()) {
                     $domainsPerPage = 25; // Number of domains per page
                     $currentPage = isset($_GET['page']) ? max(1, intval($_GET['page'])) : 1;
                     
-                    // Get domains from database with search and filters
-                    $domainsForPage = $db->getDomains($currentPage, $domainsPerPage, $searchTerm, $statusFilter, 'domain_name', 'ASC', $registrarFilter);
-                    $totalDomains = $db->getDomainCount($searchTerm, $statusFilter, $registrarFilter);
+                                         // Get domains from database with search and filters
+                     $domainsForPage = $db->getDomains($userEmail, $currentPage, $domainsPerPage, $searchTerm, $statusFilter, 'domain_name', 'ASC', $registrarFilter);
+                    $userEmail = $_SESSION['user_email'] ?? '';
+                    $totalDomains = $db->getDomainCount($userEmail, $searchTerm, $statusFilter, $registrarFilter);
                     $totalPages = ceil($totalDomains / $domainsPerPage);
                     $offset = ($currentPage - 1) * $domainsPerPage;
                      
                      // Get domain statistics from database
-                     $dbStats = $db->getDomainStats();
+                     $dbStats = $db->getDomainStats($userEmail);
                      $domainStats = [
                          'total_projects' => $dbStats['total_domains'] ?? 0,
                          'running_projects' => $dbStats['active_domains'] ?? 0,
@@ -1863,12 +1886,11 @@ if (userHasSettings()) {
                          'pending_projects' => $dbStats['pending_domains'] ?? 0
                      ];
                      
-                                         // Get unique registrars for the add domain form
-                     $uniqueRegistrars = $db->getUniqueRegistrars();
+                                         // uniqueRegistrars is already set globally
                      
                      // Convert database format to API format for compatibility
                     $allDomains = [];
-                    $allDomainsFromDb = $db->getDomains(1, 9999, '', '', 'domain_name', 'ASC', ''); // Get all for filters
+                    $allDomainsFromDb = $db->getDomains($userEmail, 1, 9999, '', '', 'domain_name', 'ASC', ''); // Get all for filters
                      foreach ($allDomainsFromDb as $domain) {
                          $allDomains[] = [
                              'id' => $domain['domain_id'],
@@ -2801,54 +2823,56 @@ if (userHasSettings()) {
                  <?php endif; ?>
 
                  <!-- Domain Statistics Cards -->
-                 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-                     <div class="bg-primary-600 text-white p-6 rounded-xl">
-                         <div class="flex items-center justify-between mb-4">
+                 <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+                     <div class="bg-primary-600 text-white p-4 rounded-xl">
+                         <div class="flex items-center justify-between mb-3">
                              <h3 class="text-sm font-medium text-primary-100">Total Domains</h3>
-                             <div class="w-8 h-8 bg-primary-500 rounded-full flex items-center justify-center">
-                                 <i data-lucide="globe" class="w-4 h-4"></i>
+                             <div class="w-6 h-6 bg-primary-500 rounded-full flex items-center justify-center">
+                                 <i data-lucide="globe" class="w-3 h-3"></i>
                              </div>
                          </div>
-                         <div class="text-4xl font-bold"><?= $databaseViewDomainStats['total_domains'] ?? 0 ?></div>
+                         <div class="text-3xl font-bold"><?= $databaseViewDomainStats['total_domains'] ?? 0 ?></div>
                      </div>
 
-                     <div class="bg-white p-6 rounded-xl border border-gray-200">
-                         <div class="flex items-center justify-between mb-4">
+                     <div class="bg-white p-4 rounded-xl border border-gray-200">
+                         <div class="flex items-center justify-between mb-3">
                              <h3 class="text-sm font-medium text-gray-500">Active Domains</h3>
-                             <div class="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
-                                 <i data-lucide="check-circle" class="w-4 h-4 text-green-600"></i>
+                             <div class="w-6 h-6 bg-green-100 rounded-full flex items-center justify-center">
+                                 <i data-lucide="check-circle" class="w-3 h-3 text-green-600"></i>
                              </div>
                          </div>
-                         <div class="text-4xl font-bold text-gray-900"><?= $databaseViewDomainStats['active_domains'] ?? 0 ?></div>
+                         <div class="text-3xl font-bold text-gray-900"><?= $databaseViewDomainStats['active_domains'] ?? 0 ?></div>
                      </div>
 
-                     <div class="bg-white p-6 rounded-xl border border-gray-200">
-                         <div class="flex items-center justify-between mb-4">
+                     <div class="bg-white p-4 rounded-xl border border-gray-200">
+                         <div class="flex items-center justify-between mb-3">
                              <h3 class="text-sm font-medium text-gray-500">Expired Domains</h3>
-                             <div class="w-8 h-8 bg-red-100 rounded-full flex items-center justify-center">
-                                 <i data-lucide="alert-triangle" class="w-4 h-4 text-red-600"></i>
+                             <div class="w-6 h-6 bg-red-100 rounded-full flex items-center justify-center">
+                                 <i data-lucide="alert-triangle" class="w-3 h-3 text-red-600"></i>
                              </div>
                          </div>
-                         <div class="text-4xl font-bold text-gray-900"><?= $databaseViewDomainStats['expired_domains'] ?? 0 ?></div>
+                         <div class="text-3xl font-bold text-gray-900"><?= $databaseViewDomainStats['expired_domains'] ?? 0 ?></div>
                      </div>
 
-                     <div class="bg-white p-6 rounded-xl border border-gray-200">
-                         <div class="flex items-center justify-between mb-4">
+                     <div class="bg-white p-4 rounded-xl border border-gray-200">
+                         <div class="flex items-center justify-between mb-3">
                              <h3 class="text-sm font-medium text-gray-500">Pending Domains</h3>
-                             <div class="w-8 h-8 bg-yellow-100 rounded-full flex items-center justify-center">
-                                 <i data-lucide="clock" class="w-4 h-4 text-yellow-600"></i>
+                             <div class="w-6 h-6 bg-yellow-100 rounded-full flex items-center justify-center">
+                                 <i data-lucide="clock" class="w-3 h-3 text-yellow-600"></i>
                              </div>
                          </div>
-                         <div class="text-4xl font-bold text-gray-900"><?= $databaseViewDomainStats['pending_domains'] ?? 0 ?></div>
+                         <div class="text-3xl font-bold text-gray-900"><?= $databaseViewDomainStats['pending_domains'] ?? 0 ?></div>
                      </div>
                  </div>
 
                  <!-- Search and Filter Controls -->
                  <div class="bg-white rounded-xl border border-gray-200 p-6 mb-6">
-                     <form method="GET" class="flex flex-wrap items-end justify-end gap-6">
+                     <form method="GET" class="space-y-4">
                          <input type="hidden" name="view" value="database_view">
-                         <div class="flex items-end gap-2">
-                             <div class="w-64">
+                         
+                         <!-- Search Row -->
+                         <div class="flex flex-col sm:flex-row items-end gap-4">
+                             <div class="flex-1 min-w-0">
                                  <label for="search" class="block text-sm font-medium text-gray-700 mb-2">Search Domains</label>
                                  <input 
                                      type="text" 
@@ -2859,63 +2883,63 @@ if (userHasSettings()) {
                                      class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                                  >
                              </div>
-                             <button type="submit" class="bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-lg font-medium transition-colors flex items-center space-x-2 h-10">
-                                 <i data-lucide="search" class="w-4 h-4"></i>
-                                 <span>Search</span>
-                             </button>
+                             <div class="flex flex-wrap gap-2">
+                                 <button type="submit" class="bg-primary-600 hover:bg-primary-700 text-white px-3 py-2 rounded-lg font-medium transition-colors flex items-center space-x-2 h-10 text-sm">
+                                     <i data-lucide="search" class="w-4 h-4"></i>
+                                     <span>Search</span>
+                                 </button>
+                                 <a href="?view=database_view" class="bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 px-3 py-2 rounded-lg font-medium transition-colors flex items-center space-x-2 h-10 text-sm">
+                                     <i data-lucide="x-circle" class="w-4 h-4"></i>
+                                     <span>Clear Filters</span>
+                                 </a>
+                             </div>
                          </div>
                          
-                         <div class="flex-1"></div>
-                         
-                         <div class="w-36">
-                             <label for="status" class="block text-sm font-medium text-gray-700 mb-2">Status Filter</label>
-                             <select name="status" id="status" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent">
-                                 <option value="">All Statuses</option>
-                                 <option value="Active" <?= ($dbStatus ?? '') === 'Active' ? 'selected' : '' ?>>Active</option>
-                                 <option value="Pending" <?= ($dbStatus ?? '') === 'Pending' ? 'selected' : '' ?>>Pending</option>
-                                 <option value="Expired" <?= ($dbStatus ?? '') === 'Expired' ? 'selected' : '' ?>>Expired</option>
-                                 <option value="Suspended" <?= ($dbStatus ?? '') === 'Suspended' ? 'selected' : '' ?>>Suspended</option>
-                                 <option value="Cancelled" <?= ($dbStatus ?? '') === 'Cancelled' ? 'selected' : '' ?>>Cancelled</option>
-                                 <option value="Transferred Away" <?= ($dbStatus ?? '') === 'Transferred Away' ? 'selected' : '' ?>>Transferred Away</option>
-                             </select>
-                         </div>
-                         
-                         <div class="w-44">
-                             <label for="registrar" class="block text-sm font-medium text-gray-700 mb-2">Registrar Filter</label>
-                             <select name="registrar" id="registrar" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent">
-                                 <option value="">All Registrars</option>
-                                 <?php if (isset($databaseViewUniqueRegistrars) && !empty($databaseViewUniqueRegistrars)): ?>
-                                     <?php foreach ($databaseViewUniqueRegistrars as $registrar): ?>
-                                         <option value="<?= htmlspecialchars($registrar) ?>" <?= ($dbRegistrar ?? '') === $registrar ? 'selected' : '' ?>><?= htmlspecialchars($registrar) ?></option>
-                                     <?php endforeach; ?>
-                                 <?php endif; ?>
-                             </select>
-                         </div>
-                         
-                         <div class="w-40">
-                             <label for="order_by" class="block text-sm font-medium text-gray-700 mb-2">Sort By</label>
-                             <select name="order_by" id="order_by" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent">
-                                 <option value="domain_name" <?= ($dbOrderBy ?? '') === 'domain_name' ? 'selected' : '' ?>>Domain Name</option>
-                                 <option value="status" <?= ($dbOrderBy ?? '') === 'status' ? 'selected' : '' ?>>Status</option>
-                                 <option value="registrar" <?= ($dbOrderBy ?? '') === 'registrar' ? 'selected' : '' ?>>Registrar</option>
-                                 <option value="expiry_date" <?= ($dbOrderBy ?? '') === 'expiry_date' ? 'selected' : '' ?>>Expiry Date</option>
-                                 <option value="last_synced" <?= ($dbOrderBy ?? '') === 'last_synced' ? 'selected' : '' ?>>Last Synced</option>
-                             </select>
-                         </div>
-                         
-                         <div class="w-36">
-                             <label for="order_dir" class="block text-sm font-medium text-gray-700 mb-2">Sort Direction</label>
-                             <select name="order_dir" id="order_dir" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent">
-                                 <option value="ASC" <?= ($dbOrderDir ?? '') === 'ASC' ? 'selected' : '' ?>>Ascending</option>
-                                 <option value="DESC" <?= ($dbOrderDir ?? '') === 'DESC' ? 'selected' : '' ?>>Descending</option>
-                             </select>
-                         </div>
-                         
-                         <div>
-                             <a href="?view=database_view" class="bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 px-4 py-2 rounded-lg font-medium transition-colors flex items-center space-x-2 h-10">
-                                 <i data-lucide="x-circle" class="w-4 h-4"></i>
-                                 <span>Clear Filters</span>
-                             </a>
+                         <!-- Filters Row -->
+                         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                             <div>
+                                 <label for="status" class="block text-sm font-medium text-gray-700 mb-2">Status Filter</label>
+                                 <select name="status" id="status" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent">
+                                     <option value="">All Statuses</option>
+                                     <option value="Active" <?= ($dbStatus ?? '') === 'Active' ? 'selected' : '' ?>>Active</option>
+                                     <option value="Pending" <?= ($dbStatus ?? '') === 'Pending' ? 'selected' : '' ?>>Pending</option>
+                                     <option value="Expired" <?= ($dbStatus ?? '') === 'Expired' ? 'selected' : '' ?>>Expired</option>
+                                     <option value="Suspended" <?= ($dbStatus ?? '') === 'Suspended' ? 'selected' : '' ?>>Suspended</option>
+                                     <option value="Cancelled" <?= ($dbStatus ?? '') === 'Cancelled' ? 'selected' : '' ?>>Cancelled</option>
+                                     <option value="Transferred Away" <?= ($dbStatus ?? '') === 'Transferred Away' ? 'selected' : '' ?>>Transferred Away</option>
+                                 </select>
+                             </div>
+                             
+                             <div>
+                                 <label for="registrar" class="block text-sm font-medium text-gray-700 mb-2">Registrar Filter</label>
+                                 <select name="registrar" id="registrar" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent">
+                                     <option value="">All Registrars</option>
+                                     <?php if (isset($databaseViewUniqueRegistrars) && !empty($databaseViewUniqueRegistrars)): ?>
+                                         <?php foreach ($databaseViewUniqueRegistrars as $registrar): ?>
+                                             <option value="<?= htmlspecialchars($registrar) ?>" <?= ($dbRegistrar ?? '') === $registrar ? 'selected' : '' ?>><?= htmlspecialchars($registrar) ?></option>
+                                         <?php endforeach; ?>
+                                     <?php endif; ?>
+                                 </select>
+                             </div>
+                             
+                             <div>
+                                 <label for="order_by" class="block text-sm font-medium text-gray-700 mb-2">Sort By</label>
+                                 <select name="order_by" id="order_by" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent">
+                                     <option value="domain_name" <?= ($dbOrderBy ?? '') === 'domain_name' ? 'selected' : '' ?>>Domain Name</option>
+                                     <option value="status" <?= ($dbOrderBy ?? '') === 'status' ? 'selected' : '' ?>>Status</option>
+                                     <option value="registrar" <?= ($dbOrderBy ?? '') === 'registrar' ? 'selected' : '' ?>>Registrar</option>
+                                     <option value="expiry_date" <?= ($dbOrderBy ?? '') === 'expiry_date' ? 'selected' : '' ?>>Expiry Date</option>
+                                     <option value="last_synced" <?= ($dbOrderBy ?? '') === 'last_synced' ? 'selected' : '' ?>>Last Synced</option>
+                                 </select>
+                             </div>
+                             
+                             <div>
+                                 <label for="order_dir" class="block text-sm font-medium text-gray-700 mb-2">Sort Direction</label>
+                                 <select name="order_dir" id="order_dir" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent">
+                                     <option value="ASC" <?= ($dbOrderDir ?? '') === 'ASC' ? 'selected' : '' ?>>Ascending</option>
+                                     <option value="DESC" <?= ($dbOrderDir ?? '') === 'DESC' ? 'selected' : '' ?>>Descending</option>
+                                 </select>
+                             </div>
                          </div>
                      </form>
                  </div>
@@ -2923,18 +2947,18 @@ if (userHasSettings()) {
                  <!-- Domains Table -->
                  <div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
                      <div class="px-6 py-4 border-b border-gray-200">
-                         <div class="flex items-center justify-between">
+                         <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                              <h3 class="text-lg font-semibold text-gray-900">Domains (<?= $databaseViewTotalDomains ?> total)</h3>
-                             <div class="flex items-center space-x-4">
-                                 <button type="button" id="addDomainBtn" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-medium transition-colors flex items-center space-x-2">
+                             <div class="flex flex-wrap items-center gap-2">
+                                 <button type="button" id="addDomainBtn" class="bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded-lg font-medium transition-colors flex items-center space-x-2 text-sm">
                                      <i data-lucide="plus" class="w-4 h-4"></i>
                                      <span>Add Domain</span>
                                  </button>
-                                 <a href="?view=export" class="bg-white hover:bg-gray-50 text-gray-700 border border-gray-300 px-4 py-2 rounded-lg font-medium transition-colors flex items-center space-x-2">
+                                 <a href="?view=export" class="bg-white hover:bg-gray-50 text-gray-700 border border-gray-300 px-3 py-2 rounded-lg font-medium transition-colors flex items-center space-x-2 text-sm">
                                      <i data-lucide="download" class="w-4 h-4"></i>
                                      <span>Export CSV</span>
                                  </a>
-                                 <a href="?view=sync" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition-colors flex items-center space-x-2">
+                                 <a href="?view=sync" class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-lg font-medium transition-colors flex items-center space-x-2 text-sm">
                                      <i data-lucide="refresh-cw" class="w-4 h-4"></i>
                                      <span>Sync Data</span>
                                  </a>
@@ -2943,38 +2967,38 @@ if (userHasSettings()) {
                      </div>
                      
                      <?php if (!empty($databaseViewDomains)): ?>
-                         <div class="overflow-x-auto">
-                             <table class="min-w-full divide-y divide-gray-200">
+                         <div class="overflow-x-auto max-w-full">
+                             <table class="w-full divide-y divide-gray-200">
                                  <thead class="bg-gray-50">
                                      <tr>
-                                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Domain Name</th>
-                                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Registrar</th>
-                                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Expiry Date</th>
-                                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nameservers</th>
-                                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Last Synced</th>
-                                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                                         <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-1/4">Domain Name</th>
+                                         <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-1/6">Registrar</th>
+                                         <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-1/6">Status</th>
+                                         <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-1/6">Expiry Date</th>
+                                         <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-1/6">Nameservers</th>
+                                         <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-1/6">Last Synced</th>
+                                         <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-1/6">Actions</th>
                                      </tr>
                                  </thead>
                                  <tbody class="bg-white divide-y divide-gray-200">
                                      <?php foreach ($databaseViewDomains as $domain): ?>
                                          <tr class="hover:bg-gray-50">
-                                             <td class="px-6 py-4 whitespace-nowrap">
+                                             <td class="px-3 py-4">
                                                  <div class="flex items-center">
-                                                     <div class="w-8 h-8 bg-primary-100 rounded-lg flex items-center justify-center mr-3">
-                                                         <i data-lucide="globe" class="w-4 h-4 text-primary-600"></i>
+                                                     <div class="w-6 h-6 bg-primary-100 rounded-lg flex items-center justify-center mr-2 flex-shrink-0">
+                                                         <i data-lucide="globe" class="w-3 h-3 text-primary-600"></i>
                                                      </div>
-                                                     <div class="text-sm font-medium text-gray-900">
+                                                     <div class="text-sm font-medium text-gray-900 truncate">
                                                          <?= htmlspecialchars($domain['domain_name']) ?>
                                                      </div>
                                                  </div>
                                              </td>
-                                             <td class="px-6 py-4 whitespace-nowrap">
-                                                 <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                             <td class="px-3 py-4">
+                                                 <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
                                                      <?= htmlspecialchars($domain['registrar'] ?? 'Unknown') ?>
                                                  </span>
                                              </td>
-                                             <td class="px-6 py-4 whitespace-nowrap">
+                                             <td class="px-3 py-4">
                                                  <?php
                                                  $status = $domain['status'] ?? 'Unknown';
                                                  $statusColors = [
@@ -2990,7 +3014,7 @@ if (userHasSettings()) {
                                                      <?= htmlspecialchars($status) ?>
                                                  </span>
                                              </td>
-                                             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                             <td class="px-3 py-4 text-sm text-gray-900">
                                                  <?php 
                                                  if (!empty($domain['expiry_date'])) {
                                                      echo date('M j, Y', strtotime($domain['expiry_date']));
@@ -2999,25 +3023,25 @@ if (userHasSettings()) {
                                                  }
                                                  ?>
                                              </td>
-                                             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                             <td class="px-3 py-4 text-sm text-gray-900">
                                                  <?php if (!empty($domain['ns1'])): ?>
                                                      <div class="text-xs">
-                                                         <div><?= htmlspecialchars($domain['ns1']) ?></div>
+                                                         <div class="truncate"><?= htmlspecialchars($domain['ns1']) ?></div>
                                                          <?php if (!empty($domain['ns2'])): ?>
-                                                             <div class="text-gray-500"><?= htmlspecialchars($domain['ns2']) ?></div>
+                                                             <div class="text-gray-500 truncate"><?= htmlspecialchars($domain['ns2']) ?></div>
                                                          <?php endif; ?>
                                                      </div>
                                                  <?php else: ?>
                                                      <span class="text-gray-400">Not available</span>
                                                  <?php endif; ?>
                                              </td>
-                                             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                             <td class="px-3 py-4 text-sm text-gray-500">
                                                  <?= date('M j, Y g:i A', strtotime($domain['last_synced'])) ?>
                                              </td>
-                                             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                                 <div class="flex items-center space-x-2">
+                                             <td class="px-3 py-4 text-sm text-gray-500">
+                                                 <div class="flex items-center space-x-1">
                                                      <button type="button" 
-                                                             class="edit-domain-btn inline-flex items-center px-2 py-1 text-xs font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 transition-colors"
+                                                             class="edit-domain-btn inline-flex items-center px-1.5 py-1 text-xs font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 transition-colors"
                                                              data-domain-id="<?= htmlspecialchars($domain['domain_id'] ?? '') ?>"
                                                              data-domain-name="<?= htmlspecialchars($domain['domain_name']) ?>"
                                                              data-registrar="<?= htmlspecialchars($domain['registrar'] ?? 'Unknown') ?>"
@@ -3028,7 +3052,7 @@ if (userHasSettings()) {
                                                          Edit
                                                      </button>
                                                      <button type="button" 
-                                                             class="delete-domain-btn inline-flex items-center px-2 py-1 text-xs font-medium text-red-700 bg-red-100 rounded-md hover:bg-red-200 transition-colors"
+                                                             class="delete-domain-btn inline-flex items-center px-1.5 py-1 text-xs font-medium text-red-700 bg-red-100 rounded-md hover:bg-red-200 transition-colors"
                                                              data-domain-id="<?= htmlspecialchars($domain['domain_id'] ?? '') ?>"
                                                              data-domain-name="<?= htmlspecialchars($domain['domain_name']) ?>">
                                                          <i data-lucide="trash-2" class="w-3 h-3 mr-1"></i>
@@ -3422,9 +3446,9 @@ if (userHasSettings()) {
                  
                  // Get user settings information
                  $debugInfo['settings'] = [
-                     'has_settings' => userHasSettings(),
-                     'settings_validation' => validateSettingsCompleteness(),
-                     'current_settings' => getUserSettings()
+                     'has_settings' => userHasSettingsDB(),
+                     'settings_validation' => validateSettingsCompletenessDB(),
+                     'current_settings' => getUserSettingsDB()
                  ];
                  
                  // Get file system information
@@ -3437,11 +3461,10 @@ if (userHasSettings()) {
                  ];
                  
                  if (isset($_SESSION['user_email'])) {
-                     $userSettings = new UserSettings();
-                     $settingsFile = 'user_settings/' . md5($_SESSION['user_email']) . '.json';
-                     $debugInfo['filesystem']['settings_file'] = $settingsFile;
-                     $debugInfo['filesystem']['settings_file_exists'] = file_exists($settingsFile);
-                     $debugInfo['filesystem']['settings_file_readable'] = file_exists($settingsFile) && is_readable($settingsFile);
+                     $userSettings = new UserSettingsDB();
+                     $debugInfo['filesystem']['settings_file'] = 'Database (user_settings table)';
+                     $debugInfo['filesystem']['settings_file_exists'] = $userSettings->hasSettings($_SESSION['user_email']);
+                     $debugInfo['filesystem']['settings_file_readable'] = $userSettings->hasSettings($_SESSION['user_email']);
                  }
                  
                  // Get environment information
@@ -4056,8 +4079,8 @@ if (userHasSettings()) {
                                     <?php endif; ?>
                                 </select>
                                 <input type="text" id="newRegistrar" name="new_registrar" 
-                                       class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 hidden"
-                                       placeholder="Enter new registrar name">
+                                       class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                                       placeholder="Enter new registrar name" style="display: none;">
                             </div>
                         </div>
                         
@@ -4235,18 +4258,18 @@ if (userHasSettings()) {
             });
             
             // Registrar field functionality for Add Domain
-            const registrarSelect = document.getElementById('registrar');
-            const newRegistrarInput = document.getElementById('newRegistrar');
-            
-            registrarSelect?.addEventListener('change', function() {
-                if (this.value === '__add_new__') {
-                    newRegistrarInput.classList.remove('hidden');
-                    newRegistrarInput.required = true;
-                    newRegistrarInput.focus();
-                } else {
-                    newRegistrarInput.classList.add('hidden');
-                    newRegistrarInput.required = false;
-                    newRegistrarInput.value = '';
+            document.addEventListener('change', function(e) {
+                if (e.target.id === 'registrar') {
+                    const newRegistrarInput = document.getElementById('newRegistrar');
+                    if (e.target.value === '__add_new__') {
+                        newRegistrarInput.style.display = 'block';
+                        newRegistrarInput.required = true;
+                        newRegistrarInput.focus();
+                    } else {
+                        newRegistrarInput.style.display = 'none';
+                        newRegistrarInput.required = false;
+                        newRegistrarInput.value = '';
+                    }
                 }
             });
             
@@ -4460,6 +4483,27 @@ if (userHasSettings()) {
                 document.addEventListener('DOMContentLoaded', sortDomainsInSelect);
             } else {
                 sortDomainsInSelect();
+            }
+        }
+        
+        // Mobile menu functionality
+        const mobileMenuButton = document.getElementById('mobile-menu-button');
+        const sidebar = document.querySelector('.w-80');
+        const sidebarOverlay = document.getElementById('sidebar-overlay');
+        
+        if (mobileMenuButton && sidebar) {
+            mobileMenuButton.addEventListener('click', function() {
+                sidebar.classList.toggle('-translate-x-full');
+                if (sidebarOverlay) {
+                    sidebarOverlay.classList.toggle('hidden');
+                }
+            });
+            
+            if (sidebarOverlay) {
+                sidebarOverlay.addEventListener('click', function() {
+                    sidebar.classList.add('-translate-x-full');
+                    sidebarOverlay.classList.add('hidden');
+                });
             }
         }
     </script>

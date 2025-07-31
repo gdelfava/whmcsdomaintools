@@ -54,13 +54,20 @@ try {
         exit;
     }
     
-    // Check if domain exists
+    // Get current user email
+    $userEmail = $_SESSION['user_email'] ?? '';
+    if (empty($userEmail)) {
+        echo json_encode(['success' => false, 'error' => 'User not authenticated']);
+        exit;
+    }
+    
+    // Check if domain exists for this user
     $pdo = $db->getConnection();
-    $checkStmt = $pdo->prepare("SELECT id FROM domains WHERE domain_id = :domain_id LIMIT 1");
-    $checkStmt->execute(['domain_id' => $domainId]);
+    $checkStmt = $pdo->prepare("SELECT id FROM domains WHERE user_email = :user_email AND domain_id = :domain_id LIMIT 1");
+    $checkStmt->execute(['user_email' => $userEmail, 'domain_id' => $domainId]);
     
     if (!$checkStmt->fetch()) {
-        echo json_encode(['success' => false, 'error' => 'Domain not found in database']);
+        echo json_encode(['success' => false, 'error' => 'Domain not found in database or not owned by current user']);
         exit;
     }
     
@@ -71,10 +78,11 @@ try {
             status = :status,
             expiry_date = :expiry_date,
             last_synced = CURRENT_TIMESTAMP
-            WHERE domain_id = :domain_id";
+            WHERE user_email = :user_email AND domain_id = :domain_id";
     
     $stmt = $pdo->prepare($sql);
     $result = $stmt->execute([
+        'user_email' => $userEmail,
         'domain_id' => $domainId,
         'domain_name' => $domainName,
         'registrar' => $registrar,
@@ -102,20 +110,21 @@ try {
                 'ns5' => $nameserverArray[4] ?? null
             ];
             
-            // Check if nameserver record exists
-            $nsCheckStmt = $pdo->prepare("SELECT id FROM domain_nameservers WHERE domain_id = :domain_id LIMIT 1");
-            $nsCheckStmt->execute(['domain_id' => $domainId]);
+            // Check if nameserver record exists for this user
+            $nsCheckStmt = $pdo->prepare("SELECT id FROM domain_nameservers WHERE user_email = :user_email AND domain_id = :domain_id LIMIT 1");
+            $nsCheckStmt->execute(['user_email' => $userEmail, 'domain_id' => $domainId]);
             
             if ($nsCheckStmt->fetch()) {
                 // Update existing nameserver record
-                $nsSql = "UPDATE domain_nameservers SET ns1 = :ns1, ns2 = :ns2, ns3 = :ns3, ns4 = :ns4, ns5 = :ns5, last_updated = CURRENT_TIMESTAMP WHERE domain_id = :domain_id";
+                $nsSql = "UPDATE domain_nameservers SET ns1 = :ns1, ns2 = :ns2, ns3 = :ns3, ns4 = :ns4, ns5 = :ns5, last_updated = CURRENT_TIMESTAMP WHERE user_email = :user_email AND domain_id = :domain_id";
             } else {
                 // Insert new nameserver record
-                $nsSql = "INSERT INTO domain_nameservers (domain_id, ns1, ns2, ns3, ns4, ns5) VALUES (:domain_id, :ns1, :ns2, :ns3, :ns4, :ns5)";
+                $nsSql = "INSERT INTO domain_nameservers (user_email, domain_id, ns1, ns2, ns3, ns4, ns5) VALUES (:user_email, :domain_id, :ns1, :ns2, :ns3, :ns4, :ns5)";
             }
             
             $nsStmt = $pdo->prepare($nsSql);
             $nsStmt->execute([
+                'user_email' => $userEmail,
                 'domain_id' => $domainId,
                 'ns1' => $nsData['ns1'],
                 'ns2' => $nsData['ns2'],
