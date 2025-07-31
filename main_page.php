@@ -1,9 +1,9 @@
 <?php
-require_once 'auth.php';
+require_once 'auth_v2.php';
 require_once 'api.php';
 require_once 'user_settings_db.php';
 require_once 'cache.php';
-require_once 'database.php';
+require_once 'database_v2.php';
 
 // Require authentication
 requireAuth();
@@ -42,7 +42,7 @@ if (isset($_POST['save_settings'])) {
         ];
         
         $userSettings = new UserSettingsDB();
-        if ($userSettings->saveSettings($_SESSION['user_email'], $settings)) {
+        if ($userSettings->saveSettings($_SESSION['company_id'], $_SESSION['user_email'], $settings)) {
             $message = 'Settings saved successfully!';
             $messageType = 'success';
             
@@ -100,8 +100,11 @@ $uniqueRegistrars = [];
 try {
     $db = Database::getInstance();
     $userEmail = $_SESSION['user_email'] ?? '';
-    if (!empty($userEmail)) {
-        $uniqueRegistrars = $db->getUniqueRegistrars($userEmail);
+    $companyId = $_SESSION['company_id'] ?? null;
+    if (!empty($userEmail) && !empty($companyId)) {
+        $uniqueRegistrars = $db->getUniqueRegistrars($companyId, $userEmail);
+    } else {
+        $uniqueRegistrars = [];
     }
 } catch (Exception $e) {
     // Fallback to empty array if database fails
@@ -780,15 +783,24 @@ if ($currentView === 'database_view') {
 
         // Get domains from database
         $userEmail = $_SESSION['user_email'] ?? '';
-        $databaseViewDomains = $db->getDomains($userEmail, $dbPage, $dbPerPage, $dbSearch, $dbStatus, $dbOrderBy, $dbOrderDir, $dbRegistrar);
-        $databaseViewTotalDomains = $db->getDomainCount($userEmail, $dbSearch, $dbStatus, $dbRegistrar);
-        $databaseViewDomainStats = $db->getDomainStats($userEmail);
-        
-        // Get last sync information
-        $databaseViewLastSync = $db->getLastSyncInfo($userEmail);
-        
-        // Get unique registrars for the edit form
-        $databaseViewUniqueRegistrars = $db->getUniqueRegistrars($userEmail);
+        $companyId = $_SESSION['company_id'] ?? null;
+        if (!empty($userEmail) && !empty($companyId)) {
+            $databaseViewDomains = $db->getDomains($companyId, $userEmail, $dbPage, $dbPerPage, $dbSearch, $dbStatus, $dbOrderBy, $dbOrderDir, $dbRegistrar);
+            $databaseViewTotalDomains = $db->getDomainCount($companyId, $userEmail, $dbSearch, $dbStatus, $dbRegistrar);
+            $databaseViewDomainStats = $db->getDomainStats($companyId, $userEmail);
+            
+            // Get last sync information
+            $databaseViewLastSync = $db->getLastSyncInfo($userEmail);
+            
+            // Get unique registrars for the edit form
+            $databaseViewUniqueRegistrars = $db->getUniqueRegistrars($companyId, $userEmail);
+        } else {
+            $databaseViewDomains = [];
+            $databaseViewTotalDomains = 0;
+            $databaseViewDomainStats = [];
+            $databaseViewLastSync = null;
+            $databaseViewUniqueRegistrars = [];
+        }
         
     } catch (Exception $e) {
         $databaseViewError = "Failed to fetch domains: " . $e->getMessage();
@@ -813,7 +825,13 @@ if ($currentView === 'sync') {
             $syncViewLastSync = $db->getLastSyncInfo($_SESSION['user_email'] ?? '');
             
             // Get domain statistics
-            $syncViewDomainStats = $db->getDomainStats();
+            $userEmail = $_SESSION['user_email'] ?? '';
+            $companyId = $_SESSION['company_id'] ?? null;
+            if (!empty($userEmail) && !empty($companyId)) {
+                $syncViewDomainStats = $db->getDomainStats($companyId, $userEmail);
+            } else {
+                $syncViewDomainStats = [];
+            }
             
         } catch (Exception $e) {
             $syncViewError = "Database connection failed: " . $e->getMessage();
@@ -1083,7 +1101,7 @@ if (userHasSettingsDB()) {
                         </button>
                         <div class="flex items-center space-x-3">
                             <?php
-                            $userEmail = $_SESSION['user_email'] ?? '';
+                            $userEmail = getCurrentUserEmail() ?? '';
                             $gravatarHash = md5(strtolower(trim($userEmail)));
                             $gravatarUrl = "https://www.gravatar.com/avatar/{$gravatarHash}?s=32&d=mp&r=g";
                             ?>
@@ -1096,7 +1114,7 @@ if (userHasSettingsDB()) {
                     </div>
                             <div>
                                 <p class="text-sm font-medium text-gray-900"><?= htmlspecialchars($userEmail ?: 'User') ?></p>
-                                <p class="text-xs text-gray-500">Administrator</p>
+                                <p class="text-xs text-gray-500"><?= htmlspecialchars(getCurrentUserRoleDisplay()) ?></p>
                 </div>
                         </div>
                     </div>
@@ -1871,14 +1889,23 @@ if (userHasSettingsDB()) {
                     $currentPage = isset($_GET['page']) ? max(1, intval($_GET['page'])) : 1;
                     
                                          // Get domains from database with search and filters
-                     $domainsForPage = $db->getDomains($userEmail, $currentPage, $domainsPerPage, $searchTerm, $statusFilter, 'domain_name', 'ASC', $registrarFilter);
                     $userEmail = $_SESSION['user_email'] ?? '';
-                    $totalDomains = $db->getDomainCount($userEmail, $searchTerm, $statusFilter, $registrarFilter);
-                    $totalPages = ceil($totalDomains / $domainsPerPage);
-                    $offset = ($currentPage - 1) * $domainsPerPage;
-                     
-                     // Get domain statistics from database
-                     $dbStats = $db->getDomainStats($userEmail);
+                    $companyId = $_SESSION['company_id'] ?? null;
+                    if (!empty($userEmail) && !empty($companyId)) {
+                        $domainsForPage = $db->getDomains($companyId, $userEmail, $currentPage, $domainsPerPage, $searchTerm, $statusFilter, 'domain_name', 'ASC', $registrarFilter);
+                        $totalDomains = $db->getDomainCount($companyId, $userEmail, $searchTerm, $statusFilter, $registrarFilter);
+                        $totalPages = ceil($totalDomains / $domainsPerPage);
+                        $offset = ($currentPage - 1) * $domainsPerPage;
+                         
+                         // Get domain statistics from database
+                         $dbStats = $db->getDomainStats($companyId, $userEmail);
+                    } else {
+                        $domainsForPage = [];
+                        $totalDomains = 0;
+                        $totalPages = 0;
+                        $offset = 0;
+                        $dbStats = [];
+                    }
                      $domainStats = [
                          'total_projects' => $dbStats['total_domains'] ?? 0,
                          'running_projects' => $dbStats['active_domains'] ?? 0,
@@ -1890,7 +1917,11 @@ if (userHasSettingsDB()) {
                      
                      // Convert database format to API format for compatibility
                     $allDomains = [];
-                    $allDomainsFromDb = $db->getDomains($userEmail, 1, 9999, '', '', 'domain_name', 'ASC', ''); // Get all for filters
+                    if (!empty($userEmail) && !empty($companyId)) {
+                        $allDomainsFromDb = $db->getDomains($companyId, $userEmail, 1, 9999, '', '', 'domain_name', 'ASC', ''); // Get all for filters
+                    } else {
+                        $allDomainsFromDb = [];
+                    }
                      foreach ($allDomainsFromDb as $domain) {
                          $allDomains[] = [
                              'id' => $domain['domain_id'],
@@ -3384,6 +3415,10 @@ if (userHasSettingsDB()) {
                          <div class="flex items-start gap-2">
                              <i data-lucide="activity" class="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0"></i>
                              <div><strong>sync_logs</strong> - Sync operation history and statistics</div>
+                         </div>
+                         <div class="flex items-start gap-2">
+                             <i data-lucide="settings" class="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0"></i>
+                             <div><strong>user_settings</strong> - User API credentials and preferences</div>
                          </div>
                      </div>
                  </div>

@@ -1,6 +1,9 @@
 <?php
-require_once 'auth.php';
-require_once 'database.php';
+// require_once 'auth.php';
+// require_once 'database.php';
+// If needed, use:
+// require_once 'auth_v2.php';
+// require_once 'database_v2.php';
 
 echo "<h1>🔍 Session & Sync Debug</h1>";
 
@@ -20,11 +23,11 @@ try {
     $db = Database::getInstance();
     
     // Get domain count
-    $domainCount = $db->getDomainCount();
+    $domainCount = $db->getDomainCount($_SESSION['user_email'] ?? '');
     echo "<p><strong>Total Domains:</strong> $domainCount</p>";
     
     // Get recent domains
-    $recentDomains = $db->getDomains(10, 1);
+    $recentDomains = $db->getDomains($_SESSION['user_email'] ?? '', 1, 10);
     echo "<h3>Recent Domains (last 10):</h3>";
     if (!empty($recentDomains)) {
         echo "<table border='1' style='border-collapse: collapse; width: 100%;'>";

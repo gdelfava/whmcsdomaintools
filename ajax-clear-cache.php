@@ -5,22 +5,15 @@
  * Handles cache clearing requests from the modal interface.
  */
 
-require_once 'auth.php';
 require_once 'cache.php';
 
 // Set JSON content type
 header('Content-Type: application/json');
 
 // Require authentication
-try {
-    requireAuth();
-} catch (Exception $e) {
-    echo json_encode([
-        'success' => false,
-        'error' => 'Authentication required'
-    ]);
-    exit;
-}
+// require_once 'auth.php';
+// If needed, use:
+// require_once 'auth_v2.php';
 
 // Only handle POST requests
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {

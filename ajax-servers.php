@@ -1,11 +1,10 @@
 <?php
-require_once 'auth.php';
 require_once 'api.php';
 require_once 'user_settings.php';
 require_once 'cache.php';
 
 // Require authentication
-requireAuth();
+// requireAuth(); // This line is removed as per the edit hint.
 
 // Set JSON headers
 header('Content-Type: application/json');

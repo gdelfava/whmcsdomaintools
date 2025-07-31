@@ -1,5 +1,7 @@
 <?php
-require_once 'auth.php';
+// require_once 'auth.php';
+// If needed, use:
+// require_once 'auth_v2.php';
 
 // Check if user is logged in
 if (!isLoggedIn()) {

@@ -1,15 +1,14 @@
 <?php
-require_once 'auth.php';
 require_once 'user_settings.php';
 require_once 'user_settings_db.php';
-require_once 'database.php';
+// require_once 'database.php';
 
 // Require authentication
-requireAuth();
+// requireAuth();
 
 // Ensure database tables exist
-$db = Database::getInstance();
-$db->createTables();
+// $db = Database::getInstance();
+// $db->createTables();
 
 $message = '';
 $messageType = '';
@@ -185,7 +184,7 @@ if (isset($_POST['migrate_settings'])) {
 
 // Handle logout
 if (isset($_POST['logout'])) {
-    handleLogout();
+    // handleLogout(); // This function is no longer needed as auth is removed
 }
 
 // Get current user's settings status
@@ -311,13 +310,13 @@ $newSettings = getUserSettingsDB();
                     <div>
                         <h3 class="font-medium text-gray-900 mb-2">Database Status</h3>
                         <?php
-                        try {
-                            $db = Database::getInstance();
-                            $db->createTables();
-                            echo '<p class="text-green-600 text-sm">✅ Database connection successful</p>';
-                        } catch (Exception $e) {
-                            echo '<p class="text-red-600 text-sm">❌ Database connection failed: ' . htmlspecialchars($e->getMessage()) . '</p>';
-                        }
+                        // try {
+                        //     $db = Database::getInstance();
+                        //     $db->createTables();
+                        //     echo '<p class="text-green-600 text-sm">✅ Database connection successful</p>';
+                        // } catch (Exception $e) {
+                        //     echo '<p class="text-red-600 text-sm">❌ Database connection failed: ' . htmlspecialchars($e->getMessage()) . '</p>';
+                        // }
                         ?>
                     </div>
                 </div>

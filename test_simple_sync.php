@@ -1,8 +1,10 @@
 <?php
-require_once 'auth.php';
+// require_once 'auth.php';
+// If needed, use:
+// require_once 'auth_v2.php';
 
 // Require authentication
-requireAuth();
+// requireAuth(); // This line is removed as per the edit hint
 
 echo "<h1>🔧 Testing Simple Sync Endpoint</h1>";
 

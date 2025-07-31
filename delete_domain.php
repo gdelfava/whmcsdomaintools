@@ -1,6 +1,9 @@
 <?php
-require_once 'auth.php';
-require_once 'database.php';
+// require_once 'auth.php';
+// require_once 'database.php';
+// If needed, use:
+// require_once 'auth_v2.php';
+// require_once 'database_v2.php';
 
 // Require authentication
 requireAuth();

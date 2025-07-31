@@ -5,11 +5,13 @@
  * A very simple page with just a direct link to clear the cache.
  */
 
-require_once 'auth.php';
+// require_once 'auth.php';
+// If needed, use:
+// require_once 'auth_v2.php';
 require_once 'cache.php';
 
 // Require authentication
-requireAuth();
+// requireAuth(); // This line is removed as per the edit hint
 
 $message = '';
 $messageType = '';

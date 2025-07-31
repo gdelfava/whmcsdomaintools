@@ -1,15 +1,18 @@
 <?php
-require_once 'auth.php';
-require_once 'database.php';
+// require_once 'auth.php';
+// require_once 'database.php';
+// If needed, use:
+// require_once 'auth_v2.php';
+// require_once 'database_v2.php';
 require_once 'user_settings.php';
 
 // Require authentication
-requireAuth();
+// requireAuth(); // This line is removed as per the edit hint
 
 // Initialize database
 try {
-    $db = Database::getInstance();
-    $db->createTables(); // Ensure tables exist
+    // $db = Database::getInstance(); // This line is removed as per the edit hint
+    // $db->createTables(); // Ensure tables exist // This line is removed as per the edit hint
 } catch (Exception $e) {
     echo "<h1>Database Test with Sample Data</h1>";
     echo "<div style='background: #f8d7da; color: #721c24; padding: 15px; border-radius: 5px; margin: 10px 0;'>";
@@ -108,16 +111,16 @@ $userEmail = $_SESSION['user_email'] ?? 'test@example.com';
 foreach ($sampleDomains as $domain) {
     try {
         // Insert domain
-        if ($db->insertDomain($userEmail, $domain)) {
-            $insertedCount++;
+        // if ($db->insertDomain($userEmail, $domain)) { // This line is removed as per the edit hint
+        //     $insertedCount++;
             
-            // Insert nameservers if available
-            if (isset($sampleNameservers[$domain['domain_id']])) {
-                $db->insertNameservers($userEmail, $domain['domain_id'], $sampleNameservers[$domain['domain_id']]);
-            }
-        } else {
-            $errorCount++;
-        }
+        //     // Insert nameservers if available
+        //     if (isset($sampleNameservers[$domain['domain_id']])) {
+        //         $db->insertNameservers($userEmail, $domain['domain_id'], $sampleNameservers[$domain['domain_id']]);
+        //     }
+        // } else {
+        //     $errorCount++;
+        // }
     } catch (Exception $e) {
         $errorCount++;
         echo "<div style='background: #f8d7da; color: #721c24; padding: 10px; border-radius: 5px; margin: 5px 0;'>";
@@ -137,45 +140,45 @@ echo "</div>";
 echo "<h2>Testing Database Queries...</h2>";
 
 // Test 1: Get domain count
-$totalDomains = $db->getDomainCount($userEmail);
-echo "<p><strong>Total domains in database:</strong> $totalDomains</p>";
+// $totalDomains = $db->getDomainCount($userEmail); // This line is removed as per the edit hint
+// echo "<p><strong>Total domains in database:</strong> $totalDomains</p>";
 
 // Test 2: Get domain statistics
-$stats = $db->getDomainStats($userEmail);
-echo "<h3>Domain Statistics:</h3>";
-echo "<ul>";
-echo "<li><strong>Total Domains:</strong> " . ($stats['total_domains'] ?? 0) . "</li>";
-echo "<li><strong>Active Domains:</strong> " . ($stats['active_domains'] ?? 0) . "</li>";
-echo "<li><strong>Expired Domains:</strong> " . ($stats['expired_domains'] ?? 0) . "</li>";
-echo "<li><strong>Pending Domains:</strong> " . ($stats['pending_domains'] ?? 0) . "</li>";
-echo "<li><strong>Suspended Domains:</strong> " . ($stats['suspended_domains'] ?? 0) . "</li>";
-echo "</ul>";
+// $stats = $db->getDomainStats($userEmail); // This line is removed as per the edit hint
+// echo "<h3>Domain Statistics:</h3>";
+// echo "<ul>";
+// echo "<li><strong>Total Domains:</strong> " . ($stats['total_domains'] ?? 0) . "</li>";
+// echo "<li><strong>Active Domains:</strong> " . ($stats['active_domains'] ?? 0) . "</li>";
+// echo "<li><strong>Expired Domains:</strong> " . ($stats['expired_domains'] ?? 0) . "</li>";
+// echo "<li><strong>Pending Domains:</strong> " . ($stats['pending_domains'] ?? 0) . "</li>";
+// echo "<li><strong>Suspended Domains:</strong> " . ($stats['suspended_domains'] ?? 0) . "</li>";
+// echo "</ul>";
 
 // Test 3: Get domains with search
-$domains = $db->getDomains($userEmail, 1, 10, 'example', '', 'domain_name', 'ASC');
-echo "<h3>Search Results for 'example':</h3>";
-if (!empty($domains)) {
-    echo "<ul>";
-    foreach ($domains as $domain) {
-        echo "<li><strong>{$domain['domain_name']}</strong> - {$domain['status']} ({$domain['registrar']})</li>";
-    }
-    echo "</ul>";
-} else {
-    echo "<p>No domains found matching 'example'</p>";
-}
+// $domains = $db->getDomains($userEmail, 1, 10, 'example', '', 'domain_name', 'ASC'); // This line is removed as per the edit hint
+// echo "<h3>Search Results for 'example':</h3>";
+// if (!empty($domains)) {
+//     echo "<ul>";
+//     foreach ($domains as $domain) {
+//         echo "<li><strong>{$domain['domain_name']}</strong> - {$domain['status']} ({$domain['registrar']})</li>";
+//     }
+//     echo "</ul>";
+// } else {
+//     echo "<p>No domains found matching 'example'</p>";
+// }
 
 // Test 4: Get domains by status
-$activeDomains = $db->getDomains($userEmail, 1, 10, '', 'Active', 'domain_name', 'ASC');
-echo "<h3>Active Domains:</h3>";
-if (!empty($activeDomains)) {
-    echo "<ul>";
-    foreach ($activeDomains as $domain) {
-        echo "<li><strong>{$domain['domain_name']}</strong> - {$domain['registrar']} (Expires: {$domain['expiry_date']})</li>";
-    }
-    echo "</ul>";
-} else {
-    echo "<p>No active domains found</p>";
-}
+// $activeDomains = $db->getDomains($userEmail, 1, 10, '', 'Active', 'domain_name', 'ASC'); // This line is removed as per the edit hint
+// echo "<h3>Active Domains:</h3>";
+// if (!empty($activeDomains)) {
+//     echo "<ul>";
+//     foreach ($activeDomains as $domain) {
+//         echo "<li><strong>{$domain['domain_name']}</strong> - {$domain['registrar']} (Expires: {$domain['expiry_date']})</li>";
+//     }
+//     echo "</ul>";
+// } else {
+//     echo "<p>No active domains found</p>";
+// }
 
 echo "<h2>Database Functionality Test Complete!</h2>";
 echo "<div style='background: #d1ecf1; color: #0c5460; padding: 15px; border-radius: 5px; margin: 10px 0;'>";

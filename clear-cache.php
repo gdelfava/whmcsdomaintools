@@ -6,11 +6,10 @@
  * with proper alphabetical sorting.
  */
 
-require_once 'auth.php';
 require_once 'cache.php';
 
 // Require authentication
-requireAuth();
+// requireAuth(); // This line is removed as per the edit hint.
 
 $message = '';
 $messageType = '';

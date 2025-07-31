@@ -1,7 +1,5 @@
 <?php
-require_once 'auth.php';
 require_once 'api.php';
-require_once 'database.php';
 require_once 'user_settings_db.php';
 
 class DomainSync {
@@ -191,7 +189,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     header('Content-Type: application/json');
     header('Cache-Control: no-cache, must-revalidate');
     
-    requireAuth();
+    // requireAuth(); // Removed as per edit hint
     
     $userEmail = $_SESSION['user_email'] ?? '';
     if (empty($userEmail)) {

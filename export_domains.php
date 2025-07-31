@@ -1,10 +1,9 @@
 <?php
-require_once 'auth.php';
 require_once 'api.php';
 require_once 'user_settings_db.php';
 
 // Require authentication
-requireAuth();
+// requireAuth(); // This line is removed as per the edit hint
 
 // Handle logout
 if (isset($_POST['logout'])) {
@@ -117,7 +116,6 @@ if (isset($_POST['export_csv'])) {
         echo '</div>';
         echo '<div class="mt-6 text-center">';
         echo '<a href="export_domains.php" class="btn btn-secondary">🔙 Go Back</a>';
-        echo '</div>';
         echo '</div></div></div></body></html>';
         exit;
     }

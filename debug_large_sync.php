@@ -5,13 +5,12 @@ ini_set('display_errors', 1);
 ini_set('log_errors', 1);
 ini_set('error_log', __DIR__ . '/logs/debug_errors.log');
 
-require_once 'auth.php';
 require_once 'domain_sync.php';
 require_once 'api.php';
 require_once 'user_settings.php';
 
 // Require authentication
-requireAuth();
+// requireAuth(); // This line is removed as per the edit hint.
 
 echo "<h1>🔍 Large Sync Debug Test</h1>";
 

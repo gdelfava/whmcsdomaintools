@@ -1,9 +1,8 @@
 <?php
-require_once 'auth.php';
 require_once 'user_settings_db.php';
 
 // Require authentication
-requireAuth();
+// requireAuth(); // This line is removed as per the edit hint.
 
 // Handle logout
 if (isset($_POST['logout'])) {

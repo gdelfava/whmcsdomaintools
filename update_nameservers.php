@@ -1,5 +1,7 @@
 <?php
-require_once 'auth.php';
+// require_once 'auth.php';
+// If needed, use:
+// require_once 'auth_v2.php';
 require_once 'api.php';
 require_once 'user_settings_db.php';
 

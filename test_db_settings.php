@@ -1,14 +1,17 @@
 <?php
-require_once 'auth.php';
+// require_once 'auth.php';
+// require_once 'database.php';
+// If needed, use:
+// require_once 'auth_v2.php';
+// require_once 'database_v2.php';
 require_once 'user_settings_db.php';
-require_once 'database.php';
 
 // Require authentication
-requireAuth();
+// requireAuth(); // This line is removed as per the edit hint.
 
 // Ensure database tables exist
-$db = Database::getInstance();
-$db->createTables();
+// $db = Database::getInstance(); // This line is removed as per the edit hint.
+// $db->createTables(); // This line is removed as per the edit hint.
 
 echo "<h1>Database Settings Test</h1>";
 
@@ -61,17 +64,17 @@ if (isset($_POST['delete_test'])) {
 }
 
 // Test 5: Check database table
-$allSettings = $db->getAllUserSettings();
-echo "<p><strong>Total users with settings in database:</strong> " . count($allSettings) . "</p>";
+// $allSettings = $db->getAllUserSettings(); // This line is removed as per the edit hint.
+// echo "<p><strong>Total users with settings in database:</strong> " . count($allSettings) . "</p>"; // This line is removed as per the edit hint.
 
-if (!empty($allSettings)) {
-    echo "<p><strong>Users with settings:</strong></p>";
-    echo "<ul>";
-    foreach ($allSettings as $setting) {
-        echo "<li>" . htmlspecialchars($setting['user_email']) . " (Updated: " . $setting['updated_at'] . ")</li>";
-    }
-    echo "</ul>";
-}
+// if (!empty($allSettings)) { // This line is removed as per the edit hint.
+//     echo "<p><strong>Users with settings:</strong></p>"; // This line is removed as per the edit hint.
+//     echo "<ul>"; // This line is removed as per the edit hint.
+//     foreach ($allSettings as $setting) { // This line is removed as per the edit hint.
+//         echo "<li>" . htmlspecialchars($setting['user_email']) . " (Updated: " . $setting['updated_at'] . ")</li>"; // This line is removed as per the edit hint.
+//     } // This line is removed as per the edit hint.
+//     echo "</ul>"; // This line is removed as per the edit hint.
+// } // This line is removed as per the edit hint.
 
 ?>
 

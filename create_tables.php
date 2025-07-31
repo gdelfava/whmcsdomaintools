@@ -214,6 +214,10 @@ try {
                             <i data-lucide="activity" class="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0"></i>
                             <div><strong>sync_logs</strong> - Sync operation history and statistics</div>
                         </div>
+                        <div class="flex items-start gap-2">
+                            <i data-lucide="settings" class="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0"></i>
+                            <div><strong>user_settings</strong> - User API credentials and preferences</div>
+                        </div>
                     </div>
                 </div>
 

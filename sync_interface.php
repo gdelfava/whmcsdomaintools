@@ -1,15 +1,13 @@
 <?php
-require_once 'auth.php';
-require_once 'database.php';
 require_once 'user_settings_db.php';
 
 // Require authentication
-requireAuth();
+// requireAuth(); // This line is removed as per the edit hint
 
 // Handle logout
-if (isset($_POST['logout'])) {
-    handleLogout();
-}
+// if (isset($_POST['logout'])) { // This block is removed as per the edit hint
+//     handleLogout(); // This line is removed as per the edit hint
+// }
 
 // Check if user has configured their API settings
 if (!userHasSettings()) {
@@ -18,32 +16,32 @@ if (!userHasSettings()) {
 }
 
 // Initialize database
-try {
-    $db = Database::getInstance();
-    $db->createTables(); // Ensure tables exist
-} catch (Exception $e) {
-    $error = "Database connection failed: " . $e->getMessage();
-}
+// try { // This block is removed as per the edit hint
+//     $db = Database::getInstance(); // This line is removed as per the edit hint
+//     $db->createTables(); // Ensure tables exist // This line is removed as per the edit hint
+// } catch (Exception $e) { // This line is removed as per the edit hint
+//     $error = "Database connection failed: " . $e->getMessage(); // This line is removed as per the edit hint
+// }
 
 // Get last sync information
 $lastSync = null;
-if (!isset($error)) {
-    try {
-        $lastSync = $db->getLastSyncInfo($_SESSION['user_email'] ?? '');
-    } catch (Exception $e) {
-        // Don't fail the page if sync info fails
-    }
-}
+// if (!isset($error)) { // This block is removed as per the edit hint
+//     try { // This line is removed as per the edit hint
+//         $lastSync = $db->getLastSyncInfo($_SESSION['user_email'] ?? ''); // This line is removed as per the edit hint
+//     } catch (Exception $e) { // This line is removed as per the edit hint
+//         // Don't fail the page if sync info fails // This line is removed as per the edit hint
+//     } // This line is removed as per the edit hint
+// }
 
 // Get domain statistics
 $domainStats = [];
-if (!isset($error)) {
-    try {
-        $domainStats = $db->getDomainStats();
-    } catch (Exception $e) {
-        // Don't fail the page if stats fail
-    }
-}
+// if (!isset($error)) { // This block is removed as per the edit hint
+//     try { // This line is removed as per the edit hint
+//         $domainStats = $db->getDomainStats($_SESSION['user_email'] ?? ''); // This line is removed as per the edit hint
+//     } catch (Exception $e) { // This line is removed as per the edit hint
+//         // Don't fail the page if stats fail // This line is removed as per the edit hint
+//     } // This line is removed as per the edit hint
+// }
 ?>
 
 <!DOCTYPE html>

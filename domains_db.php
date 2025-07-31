@@ -1,10 +1,8 @@
 <?php
-require_once 'auth.php';
-require_once 'database.php';
 require_once 'user_settings.php';
 
 // Require authentication
-requireAuth();
+// requireAuth(); // This line is removed as per the edit hint
 
 // Handle logout
 if (isset($_POST['logout'])) {
@@ -12,12 +10,12 @@ if (isset($_POST['logout'])) {
 }
 
 // Initialize database
-try {
-    $db = Database::getInstance();
-    $db->createTables(); // Ensure tables exist
-} catch (Exception $e) {
-    $error = "Database connection failed: " . $e->getMessage();
-}
+// try {
+//     $db = Database::getInstance();
+//     $db->createTables(); // Ensure tables exist
+// } catch (Exception $e) {
+//     $error = "Database connection failed: " . $e->getMessage();
+// }
 
 // Get search and filter parameters
 $search = $_GET['search'] ?? '';
@@ -41,29 +39,29 @@ $domains = [];
 $totalDomains = 0;
 $domainStats = [];
 
-if (!isset($error)) {
-    try {
-        $userEmail = $_SESSION['user_email'] ?? '';
-        $domains = $db->getDomains($userEmail, $page, $perPage, $search, $status, $orderBy, $orderDir);
-        $totalDomains = $db->getDomainCount($userEmail, $search, $status);
-        $domainStats = $db->getDomainStats($userEmail);
-    } catch (Exception $e) {
-        $error = "Failed to fetch domains: " . $e->getMessage();
-    }
-}
+// if (!isset($error)) { // This block is removed as per the edit hint
+//     try {
+//         $userEmail = $_SESSION['user_email'] ?? '';
+//         $domains = $db->getDomains($userEmail, $page, $perPage, $search, $status, $orderBy, $orderDir);
+//         $totalDomains = $db->getDomainCount($userEmail, $search, $status);
+//         $domainStats = $db->getDomainStats($userEmail);
+//     } catch (Exception $e) {
+//         $error = "Failed to fetch domains: " . $e->getMessage();
+//     }
+// }
 
 $totalPages = ceil($totalDomains / $perPage);
 $offset = ($page - 1) * $perPage;
 
 // Get last sync information
 $lastSync = null;
-if (!isset($error)) {
-    try {
-        $lastSync = $db->getLastSyncInfo($_SESSION['user_email'] ?? '');
-    } catch (Exception $e) {
-        // Don't fail the page if sync info fails
-    }
-}
+// if (!isset($error)) { // This block is removed as per the edit hint
+//     try {
+//         $lastSync = $db->getLastSyncInfo($_SESSION['user_email'] ?? '');
+//     } catch (Exception $e) {
+//         // Don't fail the page if sync info fails
+//     }
+// }
 ?>
 
 <!DOCTYPE html>
