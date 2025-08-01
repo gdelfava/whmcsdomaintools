@@ -17,7 +17,7 @@ $settingsValidation = validateSettingsCompletenessDB();
 
 // Handle logout
 if (isset($_POST['logout'])) {
-    handleLogout();
+    logoutUser();
 }
 
 // Handle settings save
