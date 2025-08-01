@@ -8,6 +8,9 @@ require_once 'database_v2.php';
 // Require authentication
 requireAuth();
 
+// Initialize database connection
+$db = Database::getInstance();
+
 // Check if user has settings configured
 $hasSettings = userHasSettingsDB();
 $settingsValidation = validateSettingsCompletenessDB();
@@ -37,14 +40,17 @@ if (isset($_POST['save_settings'])) {
             'api_identifier' => trim($_POST['api_identifier']),
             'api_secret' => trim($_POST['api_secret']),
             'default_ns1' => trim($_POST['default_ns1']),
-            'default_ns2' => trim($_POST['default_ns2']),
-            'logo_url' => trim($_POST['logo_url'] ?? '')
+            'default_ns2' => trim($_POST['default_ns2'])
         ];
         
         $userSettings = new UserSettingsDB();
+        
+
+        
         if ($userSettings->saveSettings($_SESSION['company_id'], $_SESSION['user_email'], $settings)) {
             $message = 'Settings saved successfully!';
             $messageType = 'success';
+            error_log("Settings saved successfully for user: " . $_SESSION['user_email']);
             
             // Clear user cache when settings change
             clearUserCache($_SESSION['user_email']);
@@ -55,6 +61,7 @@ if (isset($_POST['save_settings'])) {
         } else {
             $message = 'Failed to save settings. Please try again.';
             $messageType = 'error';
+            error_log("Failed to save settings for user: " . $_SESSION['user_email']);
         }
     } else {
         $message = 'Please fill in all required fields.';
@@ -89,8 +96,58 @@ if (isset($_POST['test_settings'])) {
     }
 }
 
+// Handle user profile save
+if (isset($_POST['save_profile'])) {
+    $user = $db->getUserByEmail($_SESSION['user_email']);
+    
+    if ($user) {
+        $userData = [
+            'first_name' => trim($_POST['first_name'] ?? ''),
+            'last_name' => trim($_POST['last_name'] ?? '')
+        ];
+        
+        if ($db->updateUser($user['id'], $userData)) {
+            $message = 'User profile updated successfully!';
+            $messageType = 'success';
+            error_log('User profile updated successfully for user: ' . $_SESSION['user_email']);
+        } else {
+            $message = 'Failed to update user profile. Please try again.';
+            $messageType = 'error';
+            error_log('Failed to update user profile for user: ' . $_SESSION['user_email']);
+        }
+    } else {
+        $message = 'User not found. Please log in again.';
+        $messageType = 'error';
+    }
+}
+
+// Handle company settings save
+if (isset($_POST['save_company'])) {
+    $companyData = [
+        'company_name' => trim($_POST['company_name'] ?? ''),
+        'company_address' => trim($_POST['company_address'] ?? ''),
+        'contact_number' => trim($_POST['contact_number'] ?? ''),
+        'contact_email' => trim($_POST['contact_email'] ?? ''),
+        'logo_url' => trim($_POST['company_logo_url'] ?? '')
+    ];
+    
+    if ($db->updateCompany($_SESSION['company_id'], $companyData)) {
+        $message = 'Company settings updated successfully!';
+        $messageType = 'success';
+        error_log('Company settings updated successfully for company: ' . $_SESSION['company_id']);
+    } else {
+        $message = 'Failed to update company settings. Please try again.';
+        $messageType = 'error';
+        error_log('Failed to update company settings for company: ' . $_SESSION['company_id']);
+    }
+}
+
 // Load existing settings
 $currentSettings = getUserSettingsDB();
+
+// Load user profile and company data
+$currentUser = $db->getUserByEmail($_SESSION['user_email'] ?? '');
+$currentCompany = $db->getCompany($_SESSION['company_id'] ?? 0);
 
 // Determine current view
 $currentView = $_GET['view'] ?? 'dashboard';
@@ -1617,8 +1674,8 @@ if (userHasSettingsDB()) {
                  <!-- Settings Content -->
                  <!-- Page Header -->
                  <div class="mb-8">
-                     <h1 class="text-2xl font-bold text-gray-900 mb-2">API Settings</h1>
-                     <p class="text-gray-600">Configure your WHMCS API credentials and default nameserver settings.</p>
+                     <h1 class="text-2xl font-bold text-gray-900 mb-2">Settings & Profile</h1>
+                     <p class="text-gray-600">Configure your API credentials, user profile, and company settings.</p>
                  </div>
 
                  <!-- Messages -->
@@ -1736,39 +1793,7 @@ if (userHasSettingsDB()) {
                          </div>
                      </div>
 
-                     <!-- Customization Section -->
-                     <div class="bg-white p-6 rounded-xl border border-gray-200">
-                         <h3 class="text-lg font-semibold text-gray-900 mb-4 flex items-center space-x-2">
-                             <i data-lucide="palette" class="w-5 h-5 text-primary-600"></i>
-                             <span>Customization</span>
-                         </h3>
-                         
-                         <div>
-                             <label for="logo_url" class="block text-sm font-medium text-gray-700 mb-2">Custom Logo URL</label>
-                             <input 
-                                 type="url" 
-                                 id="logo_url" 
-                                 name="logo_url" 
-                                 class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                                 value="<?= htmlspecialchars($currentSettings['logo_url'] ?? '') ?>"
-                                 placeholder="https://yourdomain.com/logo.png"
-                                 oninput="updateLogoPreview()"
-                                 onblur="updateLogoPreview()"
-                             >
-                             <p class="text-xs text-gray-500 mt-1">Optional: Enter a URL to your custom logo. Recommended size: 200x60 pixels.</p>
-                             
-                             <div id="logo_preview_container" class="mt-3 p-3 bg-gray-50 rounded-lg" style="display: <?= !empty($currentSettings['logo_url']) ? 'block' : 'none' ?>;">
-                                 <div class="text-sm font-medium text-gray-700 mb-2">Logo Preview:</div>
-                                 <img id="logo_preview" 
-                                      src="<?= htmlspecialchars($currentSettings['logo_url'] ?? '') ?>" 
-                                      alt="Custom Logo" 
-                                      class="max-h-12 max-w-full object-contain"
-                                      onerror="showLogoError()"
-                                      onload="hideLogoError()">
-                                 <div id="logo_error" class="text-sm text-red-600" style="display: none;">⚠️ Logo not accessible</div>
-                             </div>
-                         </div>
-                     </div>
+
 
                      <!-- Action Buttons -->
                      <div class="flex flex-col sm:flex-row gap-3">
@@ -1784,6 +1809,161 @@ if (userHasSettingsDB()) {
                     <?php endif; ?>
                      </div>
                  </form>
+
+                 <!-- User Profile Section -->
+                 <div class="mt-8 bg-white p-6 rounded-xl border border-gray-200">
+                     <h3 class="text-lg font-semibold text-gray-900 mb-4 flex items-center space-x-2">
+                         <i data-lucide="user" class="w-5 h-5 text-primary-600"></i>
+                         <span>User Profile</span>
+                     </h3>
+                     
+                     <form method="POST" class="space-y-6">
+                         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                             <div>
+                                 <label for="first_name" class="block text-sm font-medium text-gray-700 mb-2">First Name</label>
+                                 <input 
+                                     type="text" 
+                                     id="first_name" 
+                                     name="first_name" 
+                                     class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                                     value="<?= htmlspecialchars($currentUser['first_name'] ?? '') ?>"
+                                     placeholder="Enter your first name"
+                                 >
+                                 <p class="text-xs text-gray-500 mt-1">Your first name for display purposes</p>
+                             </div>
+
+                             <div>
+                                 <label for="last_name" class="block text-sm font-medium text-gray-700 mb-2">Last Name</label>
+                                 <input 
+                                     type="text" 
+                                     id="last_name" 
+                                     name="last_name" 
+                                     class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                                     value="<?= htmlspecialchars($currentUser['last_name'] ?? '') ?>"
+                                     placeholder="Enter your last name"
+                                 >
+                                 <p class="text-xs text-gray-500 mt-1">Your last name for display purposes</p>
+                             </div>
+                         </div>
+
+                         <div>
+                             <label for="user_email" class="block text-sm font-medium text-gray-700 mb-2">Email Address</label>
+                             <input 
+                                 type="email" 
+                                 id="user_email" 
+                                 name="user_email" 
+                                 class="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50"
+                                 value="<?= htmlspecialchars($currentUser['email'] ?? '') ?>"
+                                 disabled
+                             >
+                             <p class="text-xs text-gray-500 mt-1">Your email address (cannot be changed)</p>
+                         </div>
+
+                         <div class="flex flex-col sm:flex-row gap-3">
+                             <button type="submit" name="save_profile" class="bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-lg font-medium transition-colors flex items-center justify-center space-x-2">
+                                 <i data-lucide="save" class="w-4 h-4"></i>
+                                 <span>Save Profile</span>
+                             </button>
+                         </div>
+                     </form>
+                 </div>
+
+                 <!-- Company Settings Section -->
+                 <div class="mt-8 bg-white p-6 rounded-xl border border-gray-200">
+                     <h3 class="text-lg font-semibold text-gray-900 mb-4 flex items-center space-x-2">
+                         <i data-lucide="building" class="w-5 h-5 text-primary-600"></i>
+                         <span>Company Settings</span>
+                     </h3>
+                     
+                     <form method="POST" class="space-y-6">
+                         <div>
+                             <label for="company_name" class="block text-sm font-medium text-gray-700 mb-2">Company Name *</label>
+                             <input 
+                                 type="text" 
+                                 id="company_name" 
+                                 name="company_name" 
+                                 class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                                 required
+                                 value="<?= htmlspecialchars($currentCompany['company_name'] ?? '') ?>"
+                                 placeholder="Enter your company name"
+                             >
+                             <p class="text-xs text-gray-500 mt-1">The name of your company or organization</p>
+                         </div>
+
+                         <div>
+                             <label for="company_address" class="block text-sm font-medium text-gray-700 mb-2">Company Address</label>
+                             <textarea 
+                                 id="company_address" 
+                                 name="company_address" 
+                                 class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                                 rows="3"
+                                 placeholder="Enter your company address"
+                             ><?= htmlspecialchars($currentCompany['company_address'] ?? '') ?></textarea>
+                             <p class="text-xs text-gray-500 mt-1">Your company's physical address</p>
+                         </div>
+
+                         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                             <div>
+                                 <label for="contact_number" class="block text-sm font-medium text-gray-700 mb-2">Contact Number</label>
+                                 <input 
+                                     type="tel" 
+                                     id="contact_number" 
+                                     name="contact_number" 
+                                     class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                                     value="<?= htmlspecialchars($currentCompany['contact_number'] ?? '') ?>"
+                                     placeholder="+1 (555) 123-4567"
+                                 >
+                                 <p class="text-xs text-gray-500 mt-1">Primary contact phone number</p>
+                             </div>
+
+                             <div>
+                                 <label for="contact_email" class="block text-sm font-medium text-gray-700 mb-2">Contact Email</label>
+                                 <input 
+                                     type="email" 
+                                     id="contact_email" 
+                                     name="contact_email" 
+                                     class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                                     value="<?= htmlspecialchars($currentCompany['contact_email'] ?? '') ?>"
+                                     placeholder="contact@yourcompany.com"
+                                 >
+                                 <p class="text-xs text-gray-500 mt-1">Primary contact email address</p>
+                             </div>
+                         </div>
+
+                         <div>
+                             <label for="company_logo_url" class="block text-sm font-medium text-gray-700 mb-2">Company Logo URL</label>
+                             <input 
+                                 type="url" 
+                                 id="company_logo_url" 
+                                 name="company_logo_url" 
+                                 class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                                 value="<?= htmlspecialchars($currentCompany['logo_url'] ?? '') ?>"
+                                 placeholder="https://yourcompany.com/logo.png"
+                                 oninput="updateCompanyLogoPreview()"
+                                 onblur="updateCompanyLogoPreview()"
+                             >
+                             <p class="text-xs text-gray-500 mt-1">Optional: Enter a URL to your company logo. Recommended size: 200x60 pixels.</p>
+                             
+                             <div id="company_logo_preview_container" class="mt-3 p-3 bg-gray-50 rounded-lg" style="display: <?= !empty($currentCompany['logo_url']) ? 'block' : 'none' ?>;">
+                                 <div class="text-sm font-medium text-gray-700 mb-2">Company Logo Preview:</div>
+                                 <img id="company_logo_preview" 
+                                      src="<?= htmlspecialchars($currentCompany['logo_url'] ?? '') ?>" 
+                                      alt="Company Logo" 
+                                      class="max-h-12 max-w-full object-contain"
+                                      onerror="showCompanyLogoError()"
+                                      onload="hideCompanyLogoError()">
+                                 <div id="company_logo_error" class="text-sm text-red-600" style="display: none;">⚠️ Logo not accessible</div>
+                             </div>
+                         </div>
+
+                         <div class="flex flex-col sm:flex-row gap-3">
+                             <button type="submit" name="save_company" class="bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-lg font-medium transition-colors flex items-center justify-center space-x-2">
+                                 <i data-lucide="save" class="w-4 h-4"></i>
+                                 <span>Save Company Settings</span>
+                             </button>
+                         </div>
+                     </form>
+                 </div>
 
                  <!-- Settings Status -->
                  <?php if ($currentSettings): ?>
@@ -4541,6 +4721,60 @@ if (userHasSettingsDB()) {
                 });
             }
         }
+        
+
+        
+        // Company logo preview functionality
+        function updateCompanyLogoPreview() {
+            const logoUrlInput = document.getElementById('company_logo_url');
+            const logoPreviewContainer = document.getElementById('company_logo_preview_container');
+            const logoPreview = document.getElementById('company_logo_preview');
+            const logoError = document.getElementById('company_logo_error');
+            
+            if (logoUrlInput && logoPreviewContainer && logoPreview && logoError) {
+                const logoUrl = logoUrlInput.value.trim();
+                
+                if (logoUrl) {
+                    // Show the preview container
+                    logoPreviewContainer.style.display = 'block';
+                    
+                    // Update the image source
+                    logoPreview.src = logoUrl;
+                    
+                    // Hide any previous error
+                    logoError.style.display = 'none';
+                    logoPreview.style.display = 'block';
+                } else {
+                    // Hide the preview container if no URL
+                    logoPreviewContainer.style.display = 'none';
+                }
+            }
+        }
+        
+        function showCompanyLogoError() {
+            const logoPreview = document.getElementById('company_logo_preview');
+            const logoError = document.getElementById('company_logo_error');
+            
+            if (logoPreview && logoError) {
+                logoPreview.style.display = 'none';
+                logoError.style.display = 'block';
+            }
+        }
+        
+        function hideCompanyLogoError() {
+            const logoPreview = document.getElementById('company_logo_preview');
+            const logoError = document.getElementById('company_logo_error');
+            
+            if (logoPreview && logoError) {
+                logoPreview.style.display = 'block';
+                logoError.style.display = 'none';
+            }
+        }
+        
+        // Initialize logo previews on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            updateCompanyLogoPreview();
+        });
     </script>
 
 </body>

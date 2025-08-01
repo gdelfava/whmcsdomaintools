@@ -374,6 +374,32 @@ class Database {
         }
     }
     
+    public function updateUser($userId, $userData) {
+        if (!$this->isConnected()) {
+            return false;
+        }
+        
+        $sql = "
+        UPDATE users SET 
+            first_name = :first_name,
+            last_name = :last_name,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = :user_id
+        ";
+        
+        try {
+            $stmt = $this->connection->prepare($sql);
+            return $stmt->execute([
+                'user_id' => $userId,
+                'first_name' => $userData['first_name'] ?? '',
+                'last_name' => $userData['last_name'] ?? ''
+            ]);
+        } catch (PDOException $e) {
+            error_log("Error updating user: " . $e->getMessage());
+            return false;
+        }
+    }
+    
     public function getCompanyUsers($companyId) {
         if (!$this->isConnected()) {
             return [];
@@ -614,17 +640,16 @@ class Database {
         $sql = "
         INSERT INTO user_settings (
             company_id, user_email, api_url, api_identifier, api_secret, 
-            default_ns1, default_ns2, logo_url
+            default_ns1, default_ns2
         ) VALUES (
             :company_id, :user_email, :api_url, :api_identifier, :api_secret,
-            :default_ns1, :default_ns2, :logo_url
+            :default_ns1, :default_ns2
         ) ON DUPLICATE KEY UPDATE
             api_url = VALUES(api_url),
             api_identifier = VALUES(api_identifier),
             api_secret = VALUES(api_secret),
             default_ns1 = VALUES(default_ns1),
             default_ns2 = VALUES(default_ns2),
-            logo_url = VALUES(logo_url),
             updated_at = CURRENT_TIMESTAMP
         ";
         
@@ -637,8 +662,7 @@ class Database {
                 'api_identifier' => $settings['api_identifier'],
                 'api_secret' => $settings['api_secret'],
                 'default_ns1' => $settings['default_ns1'],
-                'default_ns2' => $settings['default_ns2'],
-                'logo_url' => $settings['logo_url'] ?? ''
+                'default_ns2' => $settings['default_ns2']
             ]);
         } catch (PDOException $e) {
             error_log("Error saving user settings: " . $e->getMessage());

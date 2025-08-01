@@ -16,8 +16,7 @@ class UserSettingsDB {
             'api_identifier' => $this->encrypt($settings['api_identifier']),
             'api_secret' => $this->encrypt($settings['api_secret']),
             'default_ns1' => $settings['default_ns1'],
-            'default_ns2' => $settings['default_ns2'],
-            'logo_url' => $settings['logo_url'] ?? ''
+            'default_ns2' => $settings['default_ns2']
         ];
         
         return $this->db->saveUserSettings($companyId, $userEmail, $encryptedSettings);
@@ -39,7 +38,6 @@ class UserSettingsDB {
                 'api_secret' => $this->decrypt($settings['api_secret'] ?? ''),
                 'default_ns1' => $settings['default_ns1'] ?? '',
                 'default_ns2' => $settings['default_ns2'] ?? '',
-                'logo_url' => $settings['logo_url'] ?? '',
                 'created_at' => $settings['created_at'] ?? null,
                 'updated_at' => $settings['updated_at'] ?? null
             ];
@@ -177,11 +175,12 @@ function getLogoUrlDB() {
         return 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTIwIiBoZWlnaHQ9IjQwIiB2aWV3Qm94PSIwIDAgMTIwIDQwIiBmaWxsPSJub25lIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPgo8cmVjdCB3aWR0aD0iMTIwIiBoZWlnaHQ9IjQwIiByeD0iOCIgZmlsbD0iI0Y5RkFGRiIvPgo8dGV4dCB4PSI2MCIgeT0iMjUiIGZvbnQtZmFtaWx5PSJBcmlhbCwgc2Fucy1zZXJpZiIgZm9udC1zaXplPSIxNCIgZmlsbD0iIzM3NDE1MSIgdGV4dC1hbmNob3I9Im1pZGRsZSI+V0hNQ1MgVG9vbHM8L3RleHQ+Cjwvc3ZnPgo=';
     }
     
-    $userSettings = new UserSettingsDB();
-    $settings = $userSettings->loadSettings($_SESSION['company_id'], $_SESSION['user_email']);
+    // Get company logo from database
+    $db = Database::getInstance();
+    $company = $db->getCompany($_SESSION['company_id']);
     
-    if ($settings && !empty($settings['logo_url'])) {
-        return $settings['logo_url'];
+    if ($company && !empty($company['logo_url'])) {
+        return $company['logo_url'];
     }
     
     // Fallback to a generic logo (base64 encoded SVG)

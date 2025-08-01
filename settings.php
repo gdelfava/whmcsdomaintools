@@ -35,7 +35,7 @@ if (isset($_POST['save_settings'])) {
         ];
         
         $userSettings = new UserSettingsDB();
-        if ($userSettings->saveSettings($_SESSION['user_email'], $settings)) {
+        if ($userSettings->saveSettings($_SESSION['company_id'], $_SESSION['user_email'], $settings)) {
             $message = '✅ Settings saved successfully! Your API data will persist across login sessions and devices.';
             $messageType = 'success';
             
@@ -56,6 +56,55 @@ if (isset($_POST['save_settings'])) {
     } else {
         $message = '⚠️ Please fill in all required fields.';
         $messageType = 'error';
+    }
+}
+
+// Handle user profile save
+if (isset($_POST['save_profile'])) {
+    $db = Database::getInstance();
+    $user = $db->getUserByEmail($_SESSION['user_email']);
+    
+    if ($user) {
+        $userData = [
+            'first_name' => trim($_POST['first_name'] ?? ''),
+            'last_name' => trim($_POST['last_name'] ?? '')
+        ];
+        
+        if ($db->updateUser($user['id'], $userData)) {
+            $message = '✅ User profile updated successfully!';
+            $messageType = 'success';
+            error_log('User profile updated successfully for user: ' . $_SESSION['user_email']);
+        } else {
+            $message = '❌ Failed to update user profile. Please try again.';
+            $messageType = 'error';
+            error_log('Failed to update user profile for user: ' . $_SESSION['user_email']);
+        }
+    } else {
+        $message = '❌ User not found. Please log in again.';
+        $messageType = 'error';
+    }
+}
+
+// Handle company settings save
+if (isset($_POST['save_company'])) {
+    $db = Database::getInstance();
+    
+    $companyData = [
+        'company_name' => trim($_POST['company_name'] ?? ''),
+        'company_address' => trim($_POST['company_address'] ?? ''),
+        'contact_number' => trim($_POST['contact_number'] ?? ''),
+        'contact_email' => trim($_POST['contact_email'] ?? ''),
+        'logo_url' => trim($_POST['company_logo_url'] ?? '')
+    ];
+    
+    if ($db->updateCompany($_SESSION['company_id'], $companyData)) {
+        $message = '✅ Company settings updated successfully!';
+        $messageType = 'success';
+        error_log('Company settings updated successfully for company: ' . $_SESSION['company_id']);
+    } else {
+        $message = '❌ Failed to update company settings. Please try again.';
+        $messageType = 'error';
+        error_log('Failed to update company settings for company: ' . $_SESSION['company_id']);
     }
 }
 
@@ -100,6 +149,11 @@ if (!$currentSettings) {
         error_log('Settings loaded from JSON file as fallback');
     }
 }
+
+// Load user profile data
+$db = Database::getInstance();
+$currentUser = $db->getUserByEmail($_SESSION['user_email'] ?? '');
+$currentCompany = $db->getCompany($_SESSION['company_id'] ?? 0);
 ?>
 
 <!DOCTYPE html>
@@ -150,10 +204,10 @@ if (!$currentSettings) {
             <div class="main-card">
                 <!-- Card Header -->
                 <div class="card-header">
-                    <div class="card-header-content">
-                        <h1 class="page-title">⚙️ API Settings</h1>
-                        <p class="page-subtitle">Configure your WHMCS API credentials and default nameserver settings</p>
-                    </div>
+                                    <div class="card-header-content">
+                    <h1 class="page-title">⚙️ Settings & Profile</h1>
+                    <p class="page-subtitle">Configure your API credentials, user profile, and company settings</p>
+                </div>
                 </div>
 
                 <!-- Card Body -->
@@ -326,6 +380,164 @@ if (!$currentSettings) {
                             <?php endif; ?>
                         </div>
                     </form>
+
+                    <!-- User Profile Section -->
+                    <div class="card-section">
+                        <h3 class="section-title">
+                            <span class="icon">👤</span>
+                            User Profile
+                        </h3>
+                        
+                        <form method="POST" class="space-y-6">
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div class="form-group">
+                                    <label for="first_name" class="form-label">First Name</label>
+                                    <input 
+                                        type="text" 
+                                        id="first_name" 
+                                        name="first_name" 
+                                        class="form-input"
+                                        value="<?= htmlspecialchars($currentUser['first_name'] ?? '') ?>"
+                                        placeholder="Enter your first name"
+                                    >
+                                    <div class="form-help">Your first name for display purposes</div>
+                                </div>
+
+                                <div class="form-group">
+                                    <label for="last_name" class="form-label">Last Name</label>
+                                    <input 
+                                        type="text" 
+                                        id="last_name" 
+                                        name="last_name" 
+                                        class="form-input"
+                                        value="<?= htmlspecialchars($currentUser['last_name'] ?? '') ?>"
+                                        placeholder="Enter your last name"
+                                    >
+                                    <div class="form-help">Your last name for display purposes</div>
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="user_email" class="form-label">Email Address</label>
+                                <input 
+                                    type="email" 
+                                    id="user_email" 
+                                    name="user_email" 
+                                    class="form-input"
+                                    value="<?= htmlspecialchars($currentUser['email'] ?? '') ?>"
+                                    disabled
+                                >
+                                <div class="form-help">Your email address (cannot be changed)</div>
+                            </div>
+
+                            <div class="flex flex-col sm:flex-row gap-3">
+                                <button type="submit" name="save_profile" class="btn btn-primary">
+                                    <span>💾</span>
+                                    <span>Save Profile</span>
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+
+                    <!-- Company Settings Section -->
+                    <div class="card-section">
+                        <h3 class="section-title">
+                            <span class="icon">🏢</span>
+                            Company Settings
+                        </h3>
+                        
+                        <form method="POST" class="space-y-6">
+                            <div class="form-group">
+                                <label for="company_name" class="form-label">Company Name *</label>
+                                <input 
+                                    type="text" 
+                                    id="company_name" 
+                                    name="company_name" 
+                                    class="form-input"
+                                    required
+                                    value="<?= htmlspecialchars($currentCompany['company_name'] ?? '') ?>"
+                                    placeholder="Enter your company name"
+                                >
+                                <div class="form-help">The name of your company or organization</div>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="company_address" class="form-label">Company Address</label>
+                                <textarea 
+                                    id="company_address" 
+                                    name="company_address" 
+                                    class="form-textarea"
+                                    rows="3"
+                                    placeholder="Enter your company address"
+                                ><?= htmlspecialchars($currentCompany['company_address'] ?? '') ?></textarea>
+                                <div class="form-help">Your company's physical address</div>
+                            </div>
+
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div class="form-group">
+                                    <label for="contact_number" class="form-label">Contact Number</label>
+                                    <input 
+                                        type="tel" 
+                                        id="contact_number" 
+                                        name="contact_number" 
+                                        class="form-input"
+                                        value="<?= htmlspecialchars($currentCompany['contact_number'] ?? '') ?>"
+                                        placeholder="+1 (555) 123-4567"
+                                    >
+                                    <div class="form-help">Primary contact phone number</div>
+                                </div>
+
+                                <div class="form-group">
+                                    <label for="contact_email" class="form-label">Contact Email</label>
+                                    <input 
+                                        type="email" 
+                                        id="contact_email" 
+                                        name="contact_email" 
+                                        class="form-input"
+                                        value="<?= htmlspecialchars($currentCompany['contact_email'] ?? '') ?>"
+                                        placeholder="contact@yourcompany.com"
+                                    >
+                                    <div class="form-help">Primary contact email address</div>
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="company_logo_url" class="form-label">Company Logo URL</label>
+                                <input 
+                                    type="url" 
+                                    id="company_logo_url" 
+                                    name="company_logo_url" 
+                                    class="form-input"
+                                    value="<?= htmlspecialchars($currentCompany['logo_url'] ?? '') ?>"
+                                    placeholder="https://yourcompany.com/logo.png"
+                                    oninput="updateCompanyLogoPreview()"
+                                    onblur="updateCompanyLogoPreview()"
+                                >
+                                <div class="form-help">
+                                    Optional: Enter a URL to your company logo. This will be used throughout the application.
+                                    Recommended size: 200x60 pixels. Leave empty to use the default logo.
+                                </div>
+                                
+                                <div id="company_logo_preview_container" class="mt-3 p-3 bg-gray-50 rounded-md" style="display: <?= !empty($currentCompany['logo_url']) ? 'block' : 'none' ?>;">
+                                    <div class="text-sm font-medium text-gray-700 mb-2">Company Logo Preview:</div>
+                                    <img id="company_logo_preview" 
+                                         src="<?= htmlspecialchars($currentCompany['logo_url'] ?? '') ?>" 
+                                         alt="Company Logo" 
+                                         class="max-h-12 max-w-full object-contain"
+                                         onerror="showCompanyLogoError()"
+                                         onload="hideCompanyLogoError()">
+                                    <div id="company_logo_error" class="text-sm text-red-600" style="display: none;">⚠️ Logo not accessible</div>
+                                </div>
+                            </div>
+
+                            <div class="flex flex-col sm:flex-row gap-3">
+                                <button type="submit" name="save_company" class="btn btn-primary">
+                                    <span>💾</span>
+                                    <span>Save Company Settings</span>
+                                </button>
+                            </div>
+                        </form>
+                    </div>
 
                     <!-- Settings Status -->
                     <?php if ($currentSettings): ?>
@@ -512,7 +724,49 @@ if (!$currentSettings) {
         // Initialize logo preview on page load
         document.addEventListener('DOMContentLoaded', function() {
             updateLogoPreview();
+            updateCompanyLogoPreview();
         });
+        
+        // Company logo preview functionality
+        function updateCompanyLogoPreview() {
+            const logoUrlInput = document.getElementById('company_logo_url');
+            const logoPreviewContainer = document.getElementById('company_logo_preview_container');
+            const logoPreview = document.getElementById('company_logo_preview');
+            const logoError = document.getElementById('company_logo_error');
+            
+            const logoUrl = logoUrlInput.value.trim();
+            
+            if (logoUrl) {
+                // Show the preview container
+                logoPreviewContainer.style.display = 'block';
+                
+                // Update the image source
+                logoPreview.src = logoUrl;
+                
+                // Hide any previous error
+                logoError.style.display = 'none';
+                logoPreview.style.display = 'block';
+            } else {
+                // Hide the preview container if no URL
+                logoPreviewContainer.style.display = 'none';
+            }
+        }
+        
+        function showCompanyLogoError() {
+            const logoPreview = document.getElementById('company_logo_preview');
+            const logoError = document.getElementById('company_logo_error');
+            
+            logoPreview.style.display = 'none';
+            logoError.style.display = 'block';
+        }
+        
+        function hideCompanyLogoError() {
+            const logoPreview = document.getElementById('company_logo_preview');
+            const logoError = document.getElementById('company_logo_error');
+            
+            logoPreview.style.display = 'block';
+            logoError.style.display = 'none';
+        }
     </script>
 </body>
 </html> 
