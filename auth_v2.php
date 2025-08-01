@@ -129,6 +129,11 @@ function authenticateUser($email, $password) {
         return ['success' => false, 'error' => 'Invalid email or password'];
     }
     
+    // Check if this is a Google OAuth user
+    if (strpos($user['password_hash'], 'GOOGLE_OAUTH_USER_') === 0) {
+        return ['success' => false, 'error' => 'This account was created with Google Sign-In. Please use Google Sign-In to log in.'];
+    }
+    
     if (!password_verify($password, $user['password_hash'])) {
         return ['success' => false, 'error' => 'Invalid email or password'];
     }
@@ -165,6 +170,10 @@ function logoutUser() {
     if (isset($_COOKIE[session_name()])) {
         setcookie(session_name(), '', time() - 3600, '/');
     }
+    
+    // Redirect to login page
+    header('Location: login.php');
+    exit;
 }
 
 /**

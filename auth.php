@@ -1,5 +1,6 @@
 <?php
 require_once 'config.php';
+require_once 'database_v2.php';
 
 // Start session with error handling
 if (session_status() === PHP_SESSION_NONE) {
@@ -247,5 +248,220 @@ function validateSession() {
         }
     }
     return null;
+}
+
+function handleGoogleSignIn() {
+    error_log('Google sign-in request received');
+    
+    $input = json_decode(file_get_contents('php://input'), true);
+    
+    if (!$input) {
+        error_log('Google sign-in: Invalid JSON input');
+        echo json_encode(['success' => false, 'error' => 'Invalid request']);
+        exit;
+    }
+    
+    $idToken = $input['idToken'] ?? '';
+    $email = $input['email'] ?? '';
+    $displayName = $input['displayName'] ?? '';
+    
+    error_log('Google sign-in: Email = ' . $email . ', Display name = ' . $displayName);
+    
+    if (empty($idToken) || empty($email)) {
+        error_log('Google sign-in: Missing required data');
+        echo json_encode(['success' => false, 'error' => 'Missing required data']);
+        exit;
+    }
+    
+    // Verify the ID token with Firebase
+    error_log('Google sign-in: Verifying token with Firebase');
+    if (verifyIdToken($idToken)) {
+        error_log('Google sign-in: Token verified successfully');
+        
+        // Check if user exists in our database
+        $db = Database::getInstance();
+        $user = $db->getUserByEmail($email);
+        
+        if ($user) {
+            error_log('Google sign-in: User found in database, creating session');
+            // User exists, log them in
+            $_SESSION['user_id'] = $user['id'];
+            $_SESSION['user_email'] = $user['email'];
+            $_SESSION['company_id'] = $user['company_id'];
+            $_SESSION['user_role'] = $user['role'];
+            $_SESSION['firebase_token'] = $idToken;
+            $_SESSION['logged_in'] = true;
+            
+            echo json_encode(['success' => true]);
+            exit;
+        } else {
+            error_log('Google sign-in: User not found in database - ' . $email);
+            // User doesn't exist in our database
+            echo json_encode(['success' => false, 'error' => 'No account found with this email. Please register first.']);
+            exit;
+        }
+    } else {
+        error_log('Google sign-in: Token verification failed');
+        echo json_encode(['success' => false, 'error' => 'Invalid Google token']);
+        exit;
+    }
+}
+
+function handleGoogleRegister() {
+    error_log('Google registration request received');
+    
+    $input = json_decode(file_get_contents('php://input'), true);
+    
+    if (!$input) {
+        error_log('Google registration: Invalid JSON input');
+        echo json_encode(['success' => false, 'error' => 'Invalid request']);
+        exit;
+    }
+    
+    $idToken = $input['idToken'] ?? '';
+    $email = $input['email'] ?? '';
+    $displayName = $input['displayName'] ?? '';
+    
+    error_log('Google registration: Email = ' . $email . ', Display name = ' . $displayName);
+    
+    if (empty($idToken) || empty($email)) {
+        error_log('Google registration: Missing required data');
+        echo json_encode(['success' => false, 'error' => 'Missing required data']);
+        exit;
+    }
+    
+    // Verify the ID token with Firebase
+    error_log('Google registration: Verifying token with Firebase');
+    if (verifyIdToken($idToken)) {
+        error_log('Google registration: Token verified successfully');
+        
+        // Check if user already exists
+        $db = Database::getInstance();
+        $existingUser = $db->getUserByEmail($email);
+        
+        if ($existingUser) {
+            error_log('Google registration: User already exists - ' . $email);
+            echo json_encode(['success' => false, 'error' => 'An account with this email already exists. Please sign in instead.']);
+            exit;
+        }
+        
+        // Check if this is the first user
+        $firstUser = false;
+        try {
+            $sql = "SELECT COUNT(*) as count FROM users";
+            $stmt = $db->getConnection()->prepare($sql);
+            $stmt->execute();
+            $result = $stmt->fetch();
+            $firstUser = ($result['count'] ?? 0) == 0;
+            error_log('Google registration: Total users in database: ' . ($result['count'] ?? 0));
+            error_log('Google registration: Is first user: ' . ($firstUser ? 'true' : 'false'));
+        } catch (Exception $e) {
+            error_log('Google registration: Error checking user count: ' . $e->getMessage());
+            $firstUser = true;
+        }
+        
+        // Create a new company and user
+        $db->getConnection()->beginTransaction();
+        
+        try {
+            // Parse display name into first and last name
+            $nameParts = explode(' ', $displayName, 2);
+            $firstName = $nameParts[0] ?? '';
+            $lastName = $nameParts[1] ?? '';
+            
+            // Create a default company
+            $companyId = $db->createCompany([
+                'company_name' => 'My Company', // Default name, can be updated later
+                'company_address' => '',
+                'contact_number' => '',
+                'contact_email' => $email
+            ]);
+            
+            if (!$companyId) {
+                throw new Exception('Failed to create company');
+            }
+            
+            // Create user
+            $role = $firstUser ? 'server_admin' : 'normal_user';
+            
+            error_log('Google registration: Creating user with role: ' . $role);
+            error_log('Google registration: Company ID: ' . $companyId);
+            error_log('Google registration: Email: ' . $email);
+            error_log('Google registration: First name: ' . $firstName);
+            error_log('Google registration: Last name: ' . $lastName);
+            
+            $userId = $db->createUser([
+                'company_id' => $companyId,
+                'email' => $email,
+                'password_hash' => '', // No password for Google users
+                'role' => $role,
+                'first_name' => $firstName,
+                'last_name' => $lastName
+            ]);
+            
+            if (!$userId) {
+                error_log('Google registration: createUser returned false');
+                throw new Exception('Failed to create user');
+            }
+            
+            error_log('Google registration: User created successfully with ID: ' . $userId);
+            
+            // Commit transaction
+            $db->getConnection()->commit();
+            
+            error_log('Google registration: User created successfully - ' . $email);
+            
+            // Auto-login the user
+            $_SESSION['user_id'] = $userId;
+            $_SESSION['user_email'] = $email;
+            $_SESSION['company_id'] = $companyId;
+            $_SESSION['user_role'] = $role;
+            $_SESSION['firebase_token'] = $idToken;
+            $_SESSION['logged_in'] = true;
+            
+            echo json_encode(['success' => true]);
+            exit;
+            
+        } catch (Exception $e) {
+            // Rollback transaction
+            $db->getConnection()->rollBack();
+            error_log('Google registration: Error creating user - ' . $e->getMessage());
+            echo json_encode(['success' => false, 'error' => 'Registration failed: ' . $e->getMessage()]);
+            exit;
+        }
+    } else {
+        error_log('Google registration: Token verification failed');
+        echo json_encode(['success' => false, 'error' => 'Invalid Google token']);
+        exit;
+    }
+}
+
+// Handle AJAX requests
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    // Check for JSON input first (Google sign-in/register)
+    $input = json_decode(file_get_contents('php://input'), true);
+    if ($input && isset($input['action'])) {
+        switch ($input['action']) {
+            case 'google_signin':
+                handleGoogleSignIn();
+                break;
+            case 'google_register':
+                handleGoogleRegister();
+                break;
+        }
+        exit;
+    }
+    
+    // Check for regular POST data
+    if (isset($_POST['action'])) {
+        switch ($_POST['action']) {
+            case 'google_signin':
+                handleGoogleSignIn();
+                break;
+            case 'google_register':
+                handleGoogleRegister();
+                break;
+        }
+    }
 }
 ?> 

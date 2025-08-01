@@ -8,17 +8,55 @@ if (session_status() === PHP_SESSION_NONE) {
 ini_set('max_execution_time', 90);
 ini_set('memory_limit', '256M');
 
+// Start output buffering to prevent any unexpected output
+ob_start();
+
+// Set up error handler to catch any PHP errors
+function handleError($errno, $errstr, $errfile, $errline) {
+    $error = "PHP Error [$errno]: $errstr in $errfile on line $errline";
+    error_log($error);
+    
+    // Clean output buffer and return JSON error
+    ob_end_clean();
+    echo json_encode([
+        'success' => false,
+        'error' => 'PHP Error: ' . $errstr,
+        'details' => "File: $errfile, Line: $errline"
+    ]);
+    exit;
+}
+
+// Set error handler
+set_error_handler('handleError');
+
+// Set up shutdown function to catch fatal errors
+function handleShutdown() {
+    $error = error_get_last();
+    if ($error !== null && in_array($error['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR])) {
+        ob_end_clean();
+        echo json_encode([
+            'success' => false,
+            'error' => 'Fatal Error: ' . $error['message'],
+            'details' => "File: {$error['file']}, Line: {$error['line']}"
+        ]);
+    }
+}
+
+register_shutdown_function('handleShutdown');
+
 // Set JSON headers immediately
 header('Content-Type: application/json');
 header('Cache-Control: no-cache, must-revalidate');
 
 // Basic auth check
 if (!isset($_SESSION['logged_in']) || !$_SESSION['logged_in']) {
+    ob_end_clean();
     echo json_encode(['success' => false, 'error' => 'Not logged in']);
     exit;
 }
 
 if (!isset($_SERVER['REQUEST_METHOD']) || $_SERVER['REQUEST_METHOD'] !== 'POST') {
+    ob_end_clean();
     echo json_encode(['success' => false, 'error' => 'Only POST allowed']);
     exit;
 }
@@ -26,78 +64,88 @@ if (!isset($_SERVER['REQUEST_METHOD']) || $_SERVER['REQUEST_METHOD'] !== 'POST')
 $batchNumber = isset($_POST['batch_number']) ? (int)$_POST['batch_number'] : 1;
 $batchSize = isset($_POST['batch_size']) ? (int)$_POST['batch_size'] : 10;
 $userEmail = $_SESSION['user_email'] ?? '';
+$companyId = $_SESSION['company_id'] ?? null;
 
 if (empty($userEmail)) {
+    ob_end_clean();
     echo json_encode(['success' => false, 'error' => 'No user email']);
+    exit;
+}
+
+if (empty($companyId)) {
+    ob_end_clean();
+    echo json_encode(['success' => false, 'error' => 'No company ID']);
     exit;
 }
 
 try {
     // Load database and settings
     require_once 'config.php';
-    require_once 'database.php';
+    require_once 'database_v2.php';
     require_once 'user_settings_db.php';
     
     // Get user settings from database
     $userSettings = new UserSettingsDB();
-    $settings = $userSettings->loadSettings($userEmail);
+    $settings = $userSettings->loadSettings($companyId, $userEmail);
     
     if (!$settings) {
+        ob_end_clean();
         echo json_encode(['success' => false, 'error' => 'No settings found for user']);
         exit;
     }
     
     // Decrypt settings
     $apiUrl = $settings['api_url'];
-    $apiIdentifier = $userSettings->decrypt($settings['api_identifier']);
-    $apiSecret = $userSettings->decrypt($settings['api_secret']);
+    $apiIdentifier = $settings['api_identifier'];
+    $apiSecret = $settings['api_secret'];
     
     // Calculate offset
     $offset = ($batchNumber - 1) * $batchSize;
     
-    // Simple CURL call
-    $ch = curl_init();
-    curl_setopt($ch, CURLOPT_URL, $apiUrl);
-    curl_setopt($ch, CURLOPT_POST, true);
-    curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query([
+    // Use the improved API call function
+    require_once 'api.php';
+    
+    $apiResponse = curlCall($apiUrl, [
         'action' => 'GetClientsDomains',
         'identifier' => $apiIdentifier,
         'secret' => $apiSecret,
         'limitstart' => $offset,
         'limitnum' => $batchSize,
         'responsetype' => 'json'
-    ]));
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-    curl_setopt($ch, CURLOPT_TIMEOUT, 60); // Longer timeout
+    ]);
     
-    $response = curl_exec($ch);
-    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    $error = curl_error($ch);
-    curl_close($ch);
-    
-    if ($error) {
-        echo json_encode(['success' => false, 'error' => 'CURL error: ' . $error]);
+    // Check for API errors
+    if (isset($apiResponse['error'])) {
+        ob_end_clean();
+        echo json_encode(['success' => false, 'error' => 'CURL error: ' . $apiResponse['error']]);
         exit;
     }
     
-    if ($httpCode !== 200) {
-        echo json_encode(['success' => false, 'error' => 'HTTP error: ' . $httpCode]);
+    if (isset($apiResponse['result']) && $apiResponse['result'] === 'error') {
+        $errorMsg = $apiResponse['message'] ?? 'Unknown API error';
+        if (isset($apiResponse['raw_response'])) {
+            $errorMsg .= ' (Raw response: ' . $apiResponse['raw_response'] . ')';
+        }
+        ob_end_clean();
+        echo json_encode(['success' => false, 'error' => 'API error: ' . $errorMsg]);
         exit;
     }
     
-    $apiResponse = json_decode($response, true);
-    if (!$apiResponse) {
-        echo json_encode(['success' => false, 'error' => 'Invalid JSON response']);
-        exit;
-    }
-    
-    if ($apiResponse['result'] !== 'success') {
-        echo json_encode(['success' => false, 'error' => 'API error: ' . ($apiResponse['message'] ?? 'Unknown')]);
+    if (!isset($apiResponse['result']) || $apiResponse['result'] !== 'success') {
+        $errorMsg = 'API call failed';
+        if (isset($apiResponse['message'])) {
+            $errorMsg .= ': ' . $apiResponse['message'];
+        }
+        if (isset($apiResponse['raw_response'])) {
+            $errorMsg .= ' (Raw response: ' . $apiResponse['raw_response'] . ')';
+        }
+        ob_end_clean();
+        echo json_encode(['success' => false, 'error' => $errorMsg]);
         exit;
     }
     
     if (!isset($apiResponse['domains']['domain'])) {
+        ob_end_clean();
         echo json_encode(['success' => false, 'error' => 'No domains in response']);
         exit;
     }
@@ -105,46 +153,11 @@ try {
     $domains = $apiResponse['domains']['domain'];
     $totalDomains = $apiResponse['totalresults'] ?? count($domains);
     
-    // Simple database connection
-    $dbHost = getEnvVar('DB_HOST', 'localhost');
-    $dbPort = getEnvVar('DB_PORT', '3306');
-    $dbName = getEnvVar('DB_NAME', 'domain_tools');
-    $dbUser = getEnvVar('DB_USER', 'root');
-    $dbPassword = getEnvVar('DB_PASSWORD', '');
+    // Use the Database class instead of direct PDO
+    $db = Database::getInstance();
     
-    $dsn = "mysql:host=$dbHost;port=$dbPort;dbname=$dbName;charset=utf8mb4";
-    $pdo = new PDO($dsn, $dbUser, $dbPassword, [
-        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-    ]);
-    
-    // Simple function to get nameservers
-    function getNameservers($apiUrl, $apiIdentifier, $apiSecret, $domainId) {
-        $ch = curl_init();
-        curl_setopt($ch, CURLOPT_URL, $apiUrl);
-        curl_setopt($ch, CURLOPT_POST, true);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query([
-            'action' => 'DomainGetNameservers',
-            'identifier' => $apiIdentifier,
-            'secret' => $apiSecret,
-            'domainid' => $domainId,
-            'responsetype' => 'json'
-        ]));
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-        curl_setopt($ch, CURLOPT_TIMEOUT, 30);
-        
-        $response = curl_exec($ch);
-        curl_close($ch);
-        
-        if ($response) {
-            $decoded = json_decode($response, true);
-            if ($decoded && isset($decoded['result']) && $decoded['result'] === 'success') {
-                return $decoded;
-            }
-        }
-        return null;
-    }
+    // Ensure tables exist
+    $db->createTables();
     
     // Process domains quickly
     $processed = 0;
@@ -164,16 +177,6 @@ try {
                 continue;
             }
             
-            // Check if domain already exists for current user
-            $checkSql = "SELECT id, domain_id, domain_name, status FROM domains WHERE user_email = :user_email AND (domain_id = :domain_id OR domain_name = :domain_name) LIMIT 1";
-            $checkStmt = $pdo->prepare($checkSql);
-            $checkStmt->execute([
-                'user_email' => $userEmail,
-                'domain_id' => $domainId,
-                'domain_name' => $domainName
-            ]);
-            $existingDomain = $checkStmt->fetch(PDO::FETCH_ASSOC);
-            
             // Prepare domain data
             $domainData = [
                 'domain_id' => $domainId,
@@ -189,104 +192,105 @@ try {
                 'batch_number' => $batchNumber
             ];
             
-            // Insert or update based on check
-            if ($existingDomain) {
-                // Domain exists - update it
-                $sql = "UPDATE domains SET 
-                    domain_name = :domain_name,
-                    status = :status,
-                    registrar = :registrar,
-                    expiry_date = :expiry_date,
-                    registration_date = :registration_date,
-                    next_due_date = :next_due_date,
-                    amount = :amount,
-                    currency = :currency,
-                    notes = :notes,
-                    batch_number = :batch_number,
-                    last_synced = NOW()
-                WHERE user_email = :user_email AND domain_id = :domain_id";
+            // Check if domain already exists BEFORE inserting
+            $existingDomain = $db->getDomains($companyId, $userEmail, 1, 1, $domainName);
+            $isNewDomain = empty($existingDomain);
+            
+            // Use the Database class to insert/update domain
+            if ($db->insertDomain($companyId, $userEmail, $domainData)) {
+                $processed++;
                 
-                $domainData['user_email'] = $userEmail;
-                $stmt = $pdo->prepare($sql);
-                $result = $stmt->execute($domainData);
-                
-                if ($result) {
-                    $processed++;
+                // Update counters based on whether it was new or existing
+                if ($isNewDomain) {
+                    $added++;
+                } else {
                     $updated++;
                 }
-            } else {
-                // New domain - insert it
-                $sql = "INSERT INTO domains (
-                    user_email, domain_id, domain_name, status, registrar, expiry_date, 
-                    registration_date, next_due_date, amount, currency, notes, batch_number,
-                    last_synced
-                ) VALUES (
-                    :user_email, :domain_id, :domain_name, :status, :registrar, :expiry_date,
-                    :registration_date, :next_due_date, :amount, :currency, :notes, :batch_number,
-                    NOW()
-                )";
-                
-                $domainData['user_email'] = $userEmail;
-                $stmt = $pdo->prepare($sql);
-                $result = $stmt->execute($domainData);
-                
-                if ($result) {
-                    $processed++;
-                    $added++;
-                }
-            }
                 
                 // Fetch and store nameservers for this domain
-                if (!empty($domainId) && $result) {
-                    // First check if nameservers already exist for current user
-                    $checkNsSql = "SELECT domain_id FROM domain_nameservers WHERE user_email = :user_email AND domain_id = :domain_id LIMIT 1";
-                    $checkNsStmt = $pdo->prepare($checkNsSql);
-                    $checkNsStmt->execute(['user_email' => $userEmail, 'domain_id' => $domainId]);
-                    $existingNs = $checkNsStmt->fetch(PDO::FETCH_ASSOC);
+                try {
+                    error_log("Fetching nameservers for domain: {$domainName} (ID: {$domainId})");
                     
-                    // Only fetch nameservers if we need to add or update them
-                    $nsResponse = getNameservers($apiUrl, $apiIdentifier, $apiSecret, $domainId);
-                    if ($nsResponse) {
-                        $nsData = [
-                            'domain_id' => $domainId,
-                            'ns1' => $nsResponse['ns1'] ?? null,
-                            'ns2' => $nsResponse['ns2'] ?? null,
-                            'ns3' => $nsResponse['ns3'] ?? null,
-                            'ns4' => $nsResponse['ns4'] ?? null,
-                            'ns5' => $nsResponse['ns5'] ?? null
-                        ];
+                    // Use the working method: DomainGetNameservers with domainid
+                    $nameserverResponse = curlCall($apiUrl, [
+                        'action' => 'DomainGetNameservers',
+                        'identifier' => $apiIdentifier,
+                        'secret' => $apiSecret,
+                        'domainid' => $domainId,
+                        'responsetype' => 'json'
+                    ]);
+                    
+                    error_log("Nameserver API response for {$domainName}: " . json_encode($nameserverResponse));
+                    
+                    if (isset($nameserverResponse['result']) && $nameserverResponse['result'] === 'success') {
+                        // Extract nameservers from response
+                        $nameservers = [];
                         
-                        if ($existingNs) {
-                            // Update existing nameservers
-                            $nsSql = "UPDATE domain_nameservers SET 
-                                ns1 = :ns1,
-                                ns2 = :ns2,
-                                ns3 = :ns3,
-                                ns4 = :ns4,
-                                ns5 = :ns5,
-                                last_updated = NOW()
-                            WHERE user_email = :user_email AND domain_id = :domain_id";
-                        } else {
-                            // Insert new nameservers
-                            $nsSql = "INSERT INTO domain_nameservers (
-                                user_email, domain_id, ns1, ns2, ns3, ns4, ns5, last_updated
-                            ) VALUES (
-                                :user_email, :domain_id, :ns1, :ns2, :ns3, :ns4, :ns5, NOW()
-                            )";
+                        // Check for direct nameserver fields (ns1, ns2, etc.)
+                        for ($i = 1; $i <= 5; $i++) {
+                            $nsKey = "ns{$i}";
+                            if (isset($nameserverResponse[$nsKey]) && !empty($nameserverResponse[$nsKey])) {
+                                $nameservers[$nsKey] = $nameserverResponse[$nsKey];
+                            }
                         }
                         
-                        $nsData['user_email'] = $userEmail;
-                        $nsStmt = $pdo->prepare($nsSql);
-                        $nsStmt->execute($nsData);
+                        // Also check for nested nameservers structure
+                        if (empty($nameservers) && isset($nameserverResponse['nameservers']['nameserver'])) {
+                            $nsList = $nameserverResponse['nameservers']['nameserver'];
+                            if (is_array($nsList)) {
+                                foreach ($nsList as $index => $ns) {
+                                    $nameservers['ns' . ($index + 1)] = $ns;
+                                }
+                            } else {
+                                $nameservers['ns1'] = $nsList;
+                            }
+                        }
+                        
+                        error_log("Extracted nameservers for {$domainName}: " . json_encode($nameservers));
+                        
+                        // Store nameservers in database
+                        if (!empty($nameservers)) {
+                            if ($db->insertNameservers($companyId, $userEmail, $domainId, $nameservers)) {
+                                error_log("Successfully stored nameservers for domain: {$domainName}");
+                            } else {
+                                error_log("Failed to insert nameservers for domain: {$domainName}");
+                            }
+                        } else {
+                            error_log("No nameservers found for domain: {$domainName}");
+                        }
+                    } else {
+                        error_log("Failed to get nameservers for domain: {$domainName}");
+                        if (isset($nameserverResponse['message'])) {
+                            error_log("Nameserver API error: " . $nameserverResponse['message']);
+                        }
                     }
+                    
+                } catch (Exception $e) {
+                    error_log("Exception getting nameservers for domain {$domainName}: " . $e->getMessage());
+                } catch (Error $e) {
+                    error_log("Fatal error getting nameservers for domain {$domainName}: " . $e->getMessage());
                 }
+            } else {
+                $errors++;
+                error_log("Failed to insert domain: {$domainName}");
+                error_log("Domain data: " . json_encode($domainData));
+            }
             
         } catch (Exception $e) {
             $errors++;
+            error_log("Error processing domain {$domainName}: " . $e->getMessage());
+            error_log("Domain data: " . json_encode($domainData));
+            error_log("Stack trace: " . $e->getTraceAsString());
+        } catch (Error $e) {
+            $errors++;
+            error_log("Fatal error processing domain {$domainName}: " . $e->getMessage());
+            error_log("Domain data: " . json_encode($domainData));
+            error_log("Stack trace: " . $e->getTraceAsString());
         }
     }
     
     // Return simple success response
+    ob_end_clean();
     echo json_encode([
         'success' => true,
         'data' => [
@@ -303,8 +307,10 @@ try {
     ]);
     
 } catch (Exception $e) {
+    ob_end_clean();
     echo json_encode(['success' => false, 'error' => $e->getMessage()]);
 } catch (Error $e) {
+    ob_end_clean();
     echo json_encode(['success' => false, 'error' => 'Fatal: ' . $e->getMessage()]);
 }
 ?> 

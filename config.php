@@ -55,6 +55,14 @@ $firebaseConfig = [
     'appId' => getEnvVar('FIREBASE_APP_ID', '1:879726828774:web:ab8732909f6ba873626f27')
 ];
 
+// Define Firebase constants for use in templates
+define('FIREBASE_API_KEY', $firebaseConfig['apiKey']);
+define('FIREBASE_AUTH_DOMAIN', $firebaseConfig['authDomain']);
+define('FIREBASE_PROJECT_ID', $firebaseConfig['projectId']);
+define('FIREBASE_STORAGE_BUCKET', $firebaseConfig['storageBucket']);
+define('FIREBASE_MESSAGING_SENDER_ID', $firebaseConfig['messagingSenderId']);
+define('FIREBASE_APP_ID', $firebaseConfig['appId']);
+
 // Firebase REST API endpoints
 $firebaseAuthUrl = 'https://identitytoolkit.googleapis.com/v1/accounts:';
 $firebaseApiKey = $firebaseConfig['apiKey'];
@@ -73,5 +81,4 @@ if (!defined('ENCRYPTION_KEY')) {
 // $logFile = 'ns_update_log.txt';         // Log file to store update results
 
 // $defaultNs1 = 'ns1.yourdomain.com'; // Set your default nameservers here
-// $defaultNs2 = 'ns2.yourdomain.com';
-?> 
+// $defaultNs2 = 'ns2.yourdomain.com'; 

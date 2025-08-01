@@ -5,9 +5,9 @@ require_once 'user_settings_db.php';
 // requireAuth(); // This line is removed as per the edit hint
 
 // Handle logout
-// if (isset($_POST['logout'])) { // This block is removed as per the edit hint
-//     handleLogout(); // This line is removed as per the edit hint
-// }
+if (isset($_POST['logout'])) {
+    logoutUser();
+}
 
 // Check if user has configured their API settings
 if (!userHasSettings()) {
@@ -372,6 +372,38 @@ $domainStats = [];
                         <a href="main_page.php?view=export" class="inline-flex items-center px-4 py-2 bg-gray-600 text-white font-medium rounded-lg hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 transition-colors">
                             <i data-lucide="download" class="w-4 h-4 mr-2"></i>
                             Export CSV
+                        </a>
+                        <a href="test_api_debug.php" class="inline-flex items-center px-4 py-2 bg-yellow-600 text-white font-medium rounded-lg hover:bg-yellow-700 focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:ring-offset-2 transition-colors">
+                            <i data-lucide="bug" class="w-4 h-4 mr-2"></i>
+                            Debug API
+                        </a>
+                        <a href="debug_html_response.php" class="inline-flex items-center px-4 py-2 bg-orange-600 text-white font-medium rounded-lg hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 transition-colors">
+                            <i data-lucide="search" class="w-4 h-4 mr-2"></i>
+                            HTML Debug
+                        </a>
+                        <a href="test_output_buffering.php" class="inline-flex items-center px-4 py-2 bg-purple-600 text-white font-medium rounded-lg hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 transition-colors">
+                            <i data-lucide="shield" class="w-4 h-4 mr-2"></i>
+                            Output Test
+                        </a>
+                        <a href="debug_sync_errors.php" class="inline-flex items-center px-4 py-2 bg-red-600 text-white font-medium rounded-lg hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition-colors">
+                            <i data-lucide="alert-triangle" class="w-4 h-4 mr-2"></i>
+                            Sync Errors
+                        </a>
+                        <a href="test_small_sync.php" class="inline-flex items-center px-4 py-2 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 transition-colors">
+                            <i data-lucide="play" class="w-4 h-4 mr-2"></i>
+                            Test Sync
+                        </a>
+                        <a href="add_company_id_to_tables.php" class="inline-flex items-center px-4 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors">
+                            <i data-lucide="database" class="w-4 h-4 mr-2"></i>
+                            Add Company ID
+                        </a>
+                        <a href="test_nameservers.php" class="inline-flex items-center px-4 py-2 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 transition-colors">
+                            <i data-lucide="server" class="w-4 h-4 mr-2"></i>
+                            Test Nameservers
+                        </a>
+                        <a href="debug_nameserver_api.php" class="inline-flex items-center px-4 py-2 bg-teal-600 text-white font-medium rounded-lg hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 transition-colors">
+                            <i data-lucide="search" class="w-4 h-4 mr-2"></i>
+                            Debug Nameserver API
                         </a>
                         <button type="button" id="clearOldData" class="inline-flex items-center px-4 py-2 bg-red-600 text-white font-medium rounded-lg hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition-colors">
                             <i data-lucide="trash-2" class="w-4 h-4 mr-2"></i>

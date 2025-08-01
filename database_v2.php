@@ -314,6 +314,12 @@ class Database {
             return false;
         }
         
+        // For Google users, use a special password hash to indicate OAuth
+        $passwordHash = $userData['password_hash'];
+        if (empty($passwordHash)) {
+            $passwordHash = 'GOOGLE_OAUTH_USER_' . time(); // Special identifier for Google users
+        }
+        
         $sql = "
         INSERT INTO users (company_id, email, password_hash, role, first_name, last_name)
         VALUES (:company_id, :email, :password_hash, :role, :first_name, :last_name)
@@ -324,7 +330,7 @@ class Database {
             $stmt->execute([
                 'company_id' => $userData['company_id'],
                 'email' => $userData['email'],
-                'password_hash' => $userData['password_hash'],
+                'password_hash' => $passwordHash,
                 'role' => $userData['role'] ?? 'normal_user',
                 'first_name' => $userData['first_name'] ?? '',
                 'last_name' => $userData['last_name'] ?? ''
@@ -488,23 +494,23 @@ class Database {
             return [];
         }
         
-        $whereConditions = ["company_id = :company_id", "user_email = :user_email"];
+        $whereConditions = ["d.company_id = :company_id", "d.user_email = :user_email"];
         $params = ['company_id' => $companyId, 'user_email' => $userEmail];
         
         if (!empty($search)) {
-            $whereConditions[] = "(domain_name LIKE :search OR registrar LIKE :search2 OR status LIKE :search3)";
+            $whereConditions[] = "(d.domain_name LIKE :search OR d.registrar LIKE :search2 OR d.status LIKE :search3)";
             $params['search'] = "%$search%";
             $params['search2'] = "%$search%";
             $params['search3'] = "%$search%";
         }
         
         if (!empty($status)) {
-            $whereConditions[] = "status = :status";
+            $whereConditions[] = "d.status = :status";
             $params['status'] = $status;
         }
         
         if (!empty($registrar)) {
-            $whereConditions[] = "registrar = :registrar";
+            $whereConditions[] = "d.registrar = :registrar";
             $params['registrar'] = $registrar;
         }
         
@@ -512,9 +518,14 @@ class Database {
         $offset = ($page - 1) * $perPage;
         
         $sql = "
-        SELECT * FROM domains 
+        SELECT d.*, 
+               dn.ns1, dn.ns2, dn.ns3, dn.ns4, dn.ns5, dn.last_updated as nameserver_updated
+        FROM domains d
+        LEFT JOIN domain_nameservers dn ON d.domain_id = dn.domain_id 
+            AND d.company_id = dn.company_id 
+            AND d.user_email = dn.user_email
         $whereClause 
-        ORDER BY $orderBy $orderDir 
+        ORDER BY d.$orderBy $orderDir 
         LIMIT :limit OFFSET :offset
         ";
         
@@ -634,8 +645,16 @@ class Database {
     // User Settings Methods (with company_id)
     public function saveUserSettings($companyId, $userEmail, $settings) {
         if (!$this->isConnected()) {
+            error_log("Database not connected in saveUserSettings");
             return false;
         }
+        
+        // Check if settings already exist
+        $existingSettings = $this->getUserSettings($companyId, $userEmail);
+        $isUpdate = $existingSettings !== null;
+        
+        error_log("saveUserSettings - Company ID: $companyId, User Email: $userEmail, Is Update: " . ($isUpdate ? 'Yes' : 'No'));
+        error_log("saveUserSettings - Settings to save: " . print_r($settings, true));
         
         $sql = "
         INSERT INTO user_settings (
@@ -655,7 +674,7 @@ class Database {
         
         try {
             $stmt = $this->connection->prepare($sql);
-            return $stmt->execute([
+            $params = [
                 'company_id' => $companyId,
                 'user_email' => $userEmail,
                 'api_url' => $settings['api_url'],
@@ -663,9 +682,21 @@ class Database {
                 'api_secret' => $settings['api_secret'],
                 'default_ns1' => $settings['default_ns1'],
                 'default_ns2' => $settings['default_ns2']
-            ]);
+            ];
+            
+            $result = $stmt->execute($params);
+            error_log("saveUserSettings - Execute result: " . ($result ? 'Success' : 'Failed'));
+            
+            if ($result) {
+                $rowCount = $stmt->rowCount();
+                error_log("saveUserSettings - Rows affected: $rowCount");
+            }
+            
+            return $result;
         } catch (PDOException $e) {
             error_log("Error saving user settings: " . $e->getMessage());
+            error_log("SQL: " . $sql);
+            error_log("Params: " . print_r($params ?? [], true));
             return false;
         }
     }
@@ -734,19 +765,20 @@ class Database {
         }
     }
     
-    public function createSyncLog($userEmail, $batchNumber) {
+    public function createSyncLog($companyId, $userEmail, $batchNumber) {
         if (!$this->isConnected()) {
             return false;
         }
         
         $sql = "
-        INSERT INTO sync_logs (user_email, batch_number, sync_started)
-        VALUES (:user_email, :batch_number, CURRENT_TIMESTAMP)
+        INSERT INTO sync_logs (company_id, user_email, batch_number, sync_started)
+        VALUES (:company_id, :user_email, :batch_number, CURRENT_TIMESTAMP)
         ";
         
         try {
             $stmt = $this->connection->prepare($sql);
             $stmt->execute([
+                'company_id' => $companyId,
                 'user_email' => $userEmail,
                 'batch_number' => $batchNumber
             ]);
@@ -790,5 +822,144 @@ class Database {
             return false;
         }
     }
-}
-?> 
+    
+    public function getRecentSyncLogs($limit = 10) {
+        if (!$this->isConnected()) {
+            return [];
+        }
+        
+        $sql = "
+        SELECT * FROM sync_logs 
+        ORDER BY sync_started DESC 
+        LIMIT :limit
+        ";
+        
+        try {
+            $stmt = $this->connection->prepare($sql);
+            $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+            $stmt->execute();
+            return $stmt->fetchAll();
+        } catch (PDOException $e) {
+            error_log("Error getting recent sync logs: " . $e->getMessage());
+            return [];
+        }
+    }
+    
+    // Nameserver Management Methods
+    public function insertNameservers($companyId, $userEmail, $domainId, $nameservers) {
+        if (!$this->isConnected()) {
+            return false;
+        }
+        
+        $sql = "
+        INSERT INTO domain_nameservers (company_id, user_email, domain_id, ns1, ns2, ns3, ns4, ns5)
+        VALUES (:company_id, :user_email, :domain_id, :ns1, :ns2, :ns3, :ns4, :ns5)
+        ON DUPLICATE KEY UPDATE
+            ns1 = VALUES(ns1),
+            ns2 = VALUES(ns2),
+            ns3 = VALUES(ns3),
+            ns4 = VALUES(ns4),
+            ns5 = VALUES(ns5),
+            last_updated = CURRENT_TIMESTAMP
+        ";
+        
+        try {
+            $stmt = $this->connection->prepare($sql);
+            return $stmt->execute([
+                'company_id' => $companyId,
+                'user_email' => $userEmail,
+                'domain_id' => $domainId,
+                'ns1' => $nameservers['ns1'] ?? null,
+                'ns2' => $nameservers['ns2'] ?? null,
+                'ns3' => $nameservers['ns3'] ?? null,
+                'ns4' => $nameservers['ns4'] ?? null,
+                'ns5' => $nameservers['ns5'] ?? null
+            ]);
+        } catch (PDOException $e) {
+            error_log("Error inserting nameservers: " . $e->getMessage());
+            return false;
+        }
+    }
+    
+    public function getNameservers($companyId, $userEmail, $domainId) {
+        if (!$this->isConnected()) {
+            return null;
+        }
+        
+        $sql = "
+        SELECT ns1, ns2, ns3, ns4, ns5, last_updated
+        FROM domain_nameservers 
+        WHERE company_id = :company_id AND user_email = :user_email AND domain_id = :domain_id
+        ";
+        
+        try {
+            $stmt = $this->connection->prepare($sql);
+            $stmt->execute([
+                'company_id' => $companyId,
+                'user_email' => $userEmail,
+                'domain_id' => $domainId
+            ]);
+            return $stmt->fetch();
+        } catch (PDOException $e) {
+            error_log("Error getting nameservers: " . $e->getMessage());
+            return null;
+        }
+    }
+    
+    public function updateNameservers($companyId, $userEmail, $domainId, $nameservers) {
+        if (!$this->isConnected()) {
+            return false;
+        }
+        
+        $sql = "
+        UPDATE domain_nameservers SET
+            ns1 = :ns1,
+            ns2 = :ns2,
+            ns3 = :ns3,
+            ns4 = :ns4,
+            ns5 = :ns5,
+            last_updated = CURRENT_TIMESTAMP
+        WHERE company_id = :company_id AND user_email = :user_email AND domain_id = :domain_id
+        ";
+        
+        try {
+            $stmt = $this->connection->prepare($sql);
+            return $stmt->execute([
+                'company_id' => $companyId,
+                'user_email' => $userEmail,
+                'domain_id' => $domainId,
+                'ns1' => $nameservers['ns1'] ?? null,
+                'ns2' => $nameservers['ns2'] ?? null,
+                'ns3' => $nameservers['ns3'] ?? null,
+                'ns4' => $nameservers['ns4'] ?? null,
+                'ns5' => $nameservers['ns5'] ?? null
+            ]);
+        } catch (PDOException $e) {
+            error_log("Error updating nameservers: " . $e->getMessage());
+            return false;
+        }
+    }
+    
+    public function deleteNameservers($companyId, $userEmail, $domainId) {
+        if (!$this->isConnected()) {
+            return false;
+        }
+        
+        $sql = "
+        DELETE FROM domain_nameservers 
+        WHERE company_id = :company_id AND user_email = :user_email AND domain_id = :domain_id
+        ";
+        
+        try {
+            $stmt = $this->connection->prepare($sql);
+            return $stmt->execute([
+                'company_id' => $companyId,
+                'user_email' => $userEmail,
+                'domain_id' => $domainId
+            ]);
+        } catch (PDOException $e) {
+            error_log("Error deleting nameservers: " . $e->getMessage());
+            return false;
+        }
+    }
+} 

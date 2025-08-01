@@ -1,4 +1,19 @@
 <?php
+// Increase PHP timeout limits for long-running export operations
+ini_set('max_execution_time', 1200); // 20 minutes
+ini_set('memory_limit', '1024M'); // Increase memory limit
+set_time_limit(1200); // Set script timeout to 20 minutes
+
+// Set FastCGI timeout headers to prevent 30-second timeout
+if (function_exists('fastcgi_finish_request')) {
+    // This is a FastCGI environment
+    // Try to set timeout via headers
+    header('X-FastCGI-Timeout: 1200');
+}
+
+// Additional timeout prevention
+ignore_user_abort(true);
+
 require_once 'api.php';
 require_once 'user_settings_db.php';
 
@@ -7,7 +22,7 @@ require_once 'user_settings_db.php';
 
 // Handle logout
 if (isset($_POST['logout'])) {
-    handleLogout();
+    logoutUser();
 }
 
 // Check if user has configured their API settings
@@ -25,7 +40,7 @@ if (!$userSettings) {
 // === CSV Export Logic ===
 if (isset($_POST['export_csv'])) {
     // Get batch parameters
-    $batchSize = 200; // Keep at 200 to avoid timeouts
+    $batchSize = 50; // Reduced from 200 to 50 to prevent timeouts
     $batchNumber = isset($_POST['batch_number']) ? (int)$_POST['batch_number'] : 1;
     $offset = ($batchNumber - 1) * $batchSize;
     
@@ -184,6 +199,9 @@ if (isset($_POST['export_csv'])) {
     echo '<div style="background:#f8f9fa; padding:15px; border-radius:6px; border-left:4px solid #4f8cff; margin-top:15px;">';
     echo '<p style="margin:0;"><strong>🔄 Step 3:</strong> Processing nameservers for each domain in batch ' . $batchNumber . '...</p>';
     echo '<div style="margin-top:10px; font-size:14px;">';
+    echo '<div style="background:#e3f2fd; padding:10px; border-radius:4px; margin-bottom:10px;">';
+    echo '<p style="margin:0; font-size:12px; color:#1976d2;"><strong>⏱️ Timeout Protection:</strong> Script timeout set to 5 minutes, API timeout to 60 seconds</p>';
+    echo '</div>';
     flush();
     
     $processed = 0;
@@ -191,6 +209,11 @@ if (isset($_POST['export_csv'])) {
     $errors = 0;
     
     foreach ($allDomains as $domain) {
+        // Check if we're approaching timeout and extend if needed
+        if (function_exists('set_time_limit')) {
+            set_time_limit(300); // Reset timeout to 5 minutes
+        }
+        
         $domainName = $domain['domainname'] ?? 'Unknown';
         $domainId = $domain['id'] ?? null;
         $domainStatus = $domain['status'] ?? 'Unknown';
@@ -214,18 +237,22 @@ if (isset($_POST['export_csv'])) {
                 ]);
                 echo ' → <span style="color:#2e7d32;">✅ Success</span>';
                 $successful++;
-            } else {
-                $errorMsg = $nsResponse['message'] ?? 'Unknown error';
-                fputcsv($file, [$domainName, $domainId, $domainStatus, 'ERROR', $errorMsg, '', '', '', 'Failed to get nameservers', $batchNumber]);
-                echo ' → <span style="color:#d32f2f;">❌ ' . htmlspecialchars($errorMsg) . '</span>';
-                $errors++;
+                    } else {
+            $errorMsg = $nsResponse['message'] ?? 'Unknown error';
+            // Check for timeout errors specifically
+            if (isset($nsResponse['http_code']) && $nsResponse['http_code'] == 0) {
+                $errorMsg = 'API Timeout - Server took too long to respond';
             }
+            fputcsv($file, [$domainName, $domainId, $domainStatus, 'ERROR', $errorMsg, '', '', '', 'Failed to get nameservers', $batchNumber]);
+            echo ' → <span style="color:#d32f2f;">❌ ' . htmlspecialchars($errorMsg) . '</span>';
+            $errors++;
+        }
         }
         
         $processed++;
         echo '</div>';
         flush();
-        usleep(250000); // 0.25 second delay
+        usleep(100000); // Reduced to 0.1 second delay for faster processing
     }
     
     fclose($file);
@@ -337,7 +364,7 @@ if (isset($_POST['export_csv'])) {
                                 <span style="font-size: 1.5rem;">💡</span>
                                 <div>
                                     <div class="font-semibold">Batch Processing</div>
-                                    <div class="text-sm mt-1">Domains are exported in batches of 200 to prevent timeouts. Each batch creates a separate CSV file.</div>
+                                    <div class="text-sm mt-1">Domains are exported in batches of 50 to prevent timeouts. Each batch creates a separate CSV file.</div>
                                 </div>
                             </div>
                         </div>
@@ -355,7 +382,7 @@ if (isset($_POST['export_csv'])) {
                                         value="1"
                                         required
                                     >
-                                    <div class="form-help">Specify which batch of domains to export (200 domains per batch)</div>
+                                    <div class="form-help">Specify which batch of domains to export (50 domains per batch)</div>
                                 </div>
                                 <div class="form-group">
                                     <button type="submit" name="export_csv" class="btn btn-primary w-full">
@@ -370,9 +397,9 @@ if (isset($_POST['export_csv'])) {
                         <div class="bg-primary-50 border border-primary-200 rounded-lg p-4 mt-6">
                             <h4 class="font-semibold text-primary-800 mb-2">Batch Breakdown</h4>
                             <div class="text-sm text-primary-700 space-y-1">
-                                <div>• Batch 1: Domains 1-200</div>
-                                <div>• Batch 2: Domains 201-400</div>
-                                <div>• Batch 3: Domains 401-600</div>
+                                <div>• Batch 1: Domains 1-50</div>
+                                <div>• Batch 2: Domains 51-100</div>
+                                <div>• Batch 3: Domains 101-150</div>
                                 <div>• And so on...</div>
                             </div>
                         </div>

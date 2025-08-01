@@ -1,5 +1,6 @@
 <?php
 require_once 'auth_v2.php';
+require_once 'config.php';
 
 // Check if this is the first user (no companies exist)
 $db = Database::getInstance();
@@ -7,13 +8,16 @@ $firstUser = false;
 
 if ($db->isConnected()) {
     try {
-        $sql = "SELECT COUNT(*) as count FROM companies";
+        $sql = "SELECT COUNT(*) as count FROM users";
         $stmt = $db->getConnection()->prepare($sql);
         $stmt->execute();
         $result = $stmt->fetch();
         $firstUser = ($result['count'] ?? 0) == 0;
+        error_log('Registration: Total users in database: ' . ($result['count'] ?? 0));
+        error_log('Registration: Is first user: ' . ($firstUser ? 'true' : 'false'));
     } catch (Exception $e) {
         // If tables don't exist yet, this is the first user
+        error_log('Registration: Error checking user count: ' . $e->getMessage());
         $firstUser = true;
     }
 } else {
@@ -34,119 +38,96 @@ $success = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (isset($_POST['action'])) {
         switch ($_POST['action']) {
-            case 'login':
+            case 'email_register':
                 $email = sanitizeInput($_POST['email'] ?? '');
                 $password = $_POST['password'] ?? '';
-                
-                if (empty($email) || empty($password)) {
-                    $error = 'Please enter both email and password';
-                } else {
-                    $db = Database::getInstance();
-                    if (!$db->isConnected()) {
-                        $error = 'Database connection not available. Please check your database configuration.';
-                    } else {
-                        $result = authenticateUser($email, $password);
-                        if ($result['success']) {
-                            header('Location: main_page.php');
-                            exit;
-                        } else {
-                            $error = $result['error'];
-                        }
-                    }
-                }
-                break;
-                
-            case 'register':
-                $companyName = sanitizeInput($_POST['company_name'] ?? '');
-                $companyAddress = sanitizeInput($_POST['company_address'] ?? '');
-                $contactNumber = sanitizeInput($_POST['contact_number'] ?? '');
-                $contactEmail = sanitizeInput($_POST['contact_email'] ?? '');
-                $adminEmail = sanitizeInput($_POST['admin_email'] ?? '');
-                $adminPassword = $_POST['admin_password'] ?? '';
-                $adminPasswordConfirm = $_POST['admin_password_confirm'] ?? '';
-                $adminFirstName = sanitizeInput($_POST['admin_first_name'] ?? '');
-                $adminLastName = sanitizeInput($_POST['admin_last_name'] ?? '');
+                $passwordConfirm = $_POST['password_confirm'] ?? '';
+                $firstName = sanitizeInput($_POST['first_name'] ?? '');
+                $lastName = sanitizeInput($_POST['last_name'] ?? '');
                 
                 // Validate inputs
                 $errors = [];
                 
-                if (empty($companyName)) {
-                    $errors[] = 'Company name is required';
+                if (empty($email) || !validateEmail($email)) {
+                    $errors[] = 'Valid email is required';
                 }
                 
-                if (empty($contactEmail) || !validateEmail($contactEmail)) {
-                    $errors[] = 'Valid contact email is required';
-                }
-                
-                if (empty($adminEmail) || !validateEmail($adminEmail)) {
-                    $errors[] = 'Valid admin email is required';
-                }
-                
-                if (empty($adminPassword)) {
-                    $errors[] = 'Admin password is required';
+                if (empty($password)) {
+                    $errors[] = 'Password is required';
                 } else {
-                    $passwordErrors = validatePassword($adminPassword);
+                    $passwordErrors = validatePassword($password);
                     $errors = array_merge($errors, $passwordErrors);
                 }
                 
-                if (empty($adminPasswordConfirm)) {
+                if (empty($passwordConfirm)) {
                     $errors[] = 'Password confirmation is required';
-                } elseif ($adminPassword !== $adminPasswordConfirm) {
+                } elseif ($password !== $passwordConfirm) {
                     $errors[] = 'Passwords do not match';
                 }
                 
-                if (empty($adminFirstName)) {
-                    $errors[] = 'Admin first name is required';
+                if (empty($firstName)) {
+                    $errors[] = 'First name is required';
                 }
                 
-                if (empty($adminLastName)) {
-                    $errors[] = 'Admin last name is required';
+                if (empty($lastName)) {
+                    $errors[] = 'Last name is required';
                 }
                 
                 if (!empty($errors)) {
                     $error = implode(', ', $errors);
                 } else {
-                    // Create company and admin user
+                    // Check if user already exists
                     $db = Database::getInstance();
+                    $existingUser = $db->getUserByEmail($email);
                     
-                    if (!$db->isConnected()) {
-                        $error = 'Database connection not available. Please check your database configuration.';
+                    if ($existingUser) {
+                        $error = 'An account with this email already exists. Please sign in instead.';
                     } else {
-                        // Start transaction
+                        // Create a new company for this user (if first user, they get server_admin role)
                         $db->getConnection()->beginTransaction();
                         
                         try {
-                            // Create company
+                            // Create a default company
                             $companyId = $db->createCompany([
-                                'company_name' => $companyName,
-                                'company_address' => $companyAddress,
-                                'contact_number' => $contactNumber,
-                                'contact_email' => $contactEmail
+                                'company_name' => 'My Company', // Default name, can be updated later
+                                'company_address' => '',
+                                'contact_number' => '',
+                                'contact_email' => $email
                             ]);
                             
                             if (!$companyId) {
                                 throw new Exception('Failed to create company');
                             }
                             
-                            // Create admin user (automatically Server Admin)
-                            $passwordHash = password_hash($adminPassword, PASSWORD_DEFAULT);
+                            // Create user
+                            $passwordHash = password_hash($password, PASSWORD_DEFAULT);
+                            $role = $firstUser ? 'server_admin' : 'normal_user';
+                            
                             $userId = $db->createUser([
                                 'company_id' => $companyId,
-                                'email' => $adminEmail,
+                                'email' => $email,
                                 'password_hash' => $passwordHash,
-                                'role' => 'server_admin', // First user is always Server Admin
-                                'first_name' => $adminFirstName,
-                                'last_name' => $adminLastName
+                                'role' => $role,
+                                'first_name' => $firstName,
+                                'last_name' => $lastName
                             ]);
                             
                             if (!$userId) {
-                                throw new Exception('Failed to create admin user');
+                                throw new Exception('Failed to create user');
                             }
                             
                             // Commit transaction
                             $db->getConnection()->commit();
                             
-                            $success = 'Registration successful! You can now log in with your email and password.';
+                            // Auto-login the user
+                            $_SESSION['user_id'] = $userId;
+                            $_SESSION['user_email'] = $email;
+                            $_SESSION['company_id'] = $companyId;
+                            $_SESSION['user_role'] = $role;
+                            $_SESSION['logged_in'] = true;
+                            
+                            header('Location: main_page.php');
+                            exit;
                             
                         } catch (Exception $e) {
                             // Rollback transaction
@@ -208,7 +189,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <i data-lucide="globe" class="w-6 h-6 text-white"></i>
                 </div>
                 <h2 class="text-3xl font-bold text-gray-900">Domain Tools</h2>
-                <p class="mt-2 text-sm text-gray-600">Register your company account</p>
+                <p class="mt-2 text-sm text-gray-600">Create your account</p>
             </div>
 
             <!-- Error/Success Messages -->
@@ -246,104 +227,81 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <!-- Registration Form -->
             <div class="bg-white py-8 px-6 shadow-lg rounded-lg">
                 <div class="text-center mb-6">
-                    <h3 class="text-lg font-semibold text-gray-900">Company Registration</h3>
-                    <p class="text-sm text-gray-600 mt-1">Create your company and admin account</p>
-                    <div class="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                        <div class="flex items-center space-x-2">
-                            <i data-lucide="shield-check" class="w-4 h-4 text-blue-600"></i>
-                            <span class="text-xs text-blue-800 font-medium">You will be assigned Server Admin role</span>
-                        </div>
+                    <h3 class="text-lg font-semibold text-gray-900">Create Account</h3>
+                    <p class="text-sm text-gray-600 mt-1">Choose your preferred sign-up method</p>
+                </div>
+                
+                <!-- Google Sign-In Button -->
+                <div class="mb-6">
+                    <button type="button" id="google-signin-btn" onclick="signInWithGoogle()" 
+                            class="w-full flex items-center justify-center px-4 py-2 border border-gray-300 rounded-lg shadow-sm bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500">
+                        <svg class="w-5 h-5 mr-2" viewBox="0 0 24 24">
+                            <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                            <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                            <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+                            <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+                        </svg>
+                        Sign up with Google
+                    </button>
+                </div>
+                
+                <!-- Divider -->
+                <div class="relative mb-6">
+                    <div class="absolute inset-0 flex items-center">
+                        <div class="w-full border-t border-gray-300"></div>
+                    </div>
+                    <div class="relative flex justify-center text-sm">
+                        <span class="px-2 bg-white text-gray-500">Or continue with email</span>
                     </div>
                 </div>
                 
+                <!-- Email Registration Form -->
                 <form method="POST" class="space-y-4">
-                    <input type="hidden" name="action" value="register">
+                    <input type="hidden" name="action" value="email_register">
                     
-                    <!-- Company Information -->
-                    <div class="border-b border-gray-200 pb-4">
-                        <h4 class="text-sm font-medium text-gray-700 mb-3">Company Information</h4>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label for="first_name" class="block text-xs font-medium text-gray-700 mb-1">First Name *</label>
+                            <input type="text" id="first_name" name="first_name" required
+                                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent text-sm"
+                                   placeholder="First name">
+                        </div>
                         
-                        <div class="space-y-3">
-                            <div>
-                                <label for="company_name" class="block text-xs font-medium text-gray-700 mb-1">Company Name *</label>
-                                <input type="text" id="company_name" name="company_name" required 
-                                       class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent text-sm"
-                                       placeholder="Enter company name">
-                            </div>
-                            
-                            <div>
-                                <label for="company_address" class="block text-xs font-medium text-gray-700 mb-1">Company Address</label>
-                                <textarea id="company_address" name="company_address" rows="2"
-                                          class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent text-sm"
-                                          placeholder="Enter company address"></textarea>
-                            </div>
-                            
-                            <div>
-                                <label for="contact_number" class="block text-xs font-medium text-gray-700 mb-1">Contact Number</label>
-                                <input type="tel" id="contact_number" name="contact_number"
-                                       class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent text-sm"
-                                       placeholder="Enter contact number">
-                            </div>
-                            
-                            <div>
-                                <label for="contact_email" class="block text-xs font-medium text-gray-700 mb-1">Contact Email *</label>
-                                <input type="email" id="contact_email" name="contact_email" required
-                                       class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent text-sm"
-                                       placeholder="Enter contact email">
-                            </div>
+                        <div>
+                            <label for="last_name" class="block text-xs font-medium text-gray-700 mb-1">Last Name *</label>
+                            <input type="text" id="last_name" name="last_name" required
+                                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent text-sm"
+                                   placeholder="Last name">
                         </div>
                     </div>
                     
-                    <!-- Admin User Information -->
                     <div>
-                        <h4 class="text-sm font-medium text-gray-700 mb-3">Admin Account Information</h4>
-                        
-                        <div class="space-y-3">
-                            <div class="grid grid-cols-2 gap-3">
-                                <div>
-                                    <label for="admin_first_name" class="block text-xs font-medium text-gray-700 mb-1">First Name *</label>
-                                    <input type="text" id="admin_first_name" name="admin_first_name" required
-                                           class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent text-sm"
-                                           placeholder="First name">
-                                </div>
-                                
-                                <div>
-                                    <label for="admin_last_name" class="block text-xs font-medium text-gray-700 mb-1">Last Name *</label>
-                                    <input type="text" id="admin_last_name" name="admin_last_name" required
-                                           class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent text-sm"
-                                           placeholder="Last name">
-                                </div>
-                            </div>
-                            
-                            <div>
-                                <label for="admin_email" class="block text-xs font-medium text-gray-700 mb-1">Admin Email *</label>
-                                <input type="email" id="admin_email" name="admin_email" required
-                                       class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent text-sm"
-                                       placeholder="Enter admin email">
-                            </div>
-                            
-                            <div>
-                                <label for="admin_password" class="block text-xs font-medium text-gray-700 mb-1">Admin Password *</label>
-                                <input type="password" id="admin_password" name="admin_password" required
-                                       class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent text-sm"
-                                       placeholder="Enter admin password">
-                                <p class="text-xs text-gray-500 mt-1">Must be at least 8 characters with uppercase, lowercase, and number</p>
-                            </div>
-                            
-                            <div>
-                                <label for="admin_password_confirm" class="block text-xs font-medium text-gray-700 mb-1">Confirm Password *</label>
-                                <input type="password" id="admin_password_confirm" name="admin_password_confirm" required
-                                       class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent text-sm"
-                                       placeholder="Confirm admin password">
-                                <p class="text-xs text-gray-500 mt-1">Please enter the same password again</p>
-                            </div>
-                        </div>
+                        <label for="email" class="block text-xs font-medium text-gray-700 mb-1">Email Address *</label>
+                        <input type="email" id="email" name="email" required
+                               class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent text-sm"
+                               placeholder="Enter your email">
+                    </div>
+                    
+                    <div>
+                        <label for="password" class="block text-xs font-medium text-gray-700 mb-1">Password *</label>
+                        <input type="password" id="password" name="password" required
+                               class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent text-sm"
+                               placeholder="Create a password">
+                        <p class="text-xs text-gray-500 mt-1">Must be at least 8 characters with uppercase, lowercase, and number</p>
+                    </div>
+                    
+                    <div>
+                        <label for="password_confirm" class="block text-xs font-medium text-gray-700 mb-1">Confirm Password *</label>
+                        <input type="password" id="password_confirm" name="password_confirm" required
+                               class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent text-sm"
+                               placeholder="Confirm your password">
+                        <p class="text-xs text-gray-500 mt-1" id="password-match-text">Please enter the same password again</p>
                     </div>
                     
                     <div>
                         <button type="submit" 
                                 class="w-full bg-primary-600 hover:bg-primary-700 text-white font-medium py-2 px-4 rounded-lg transition-colors">
-                            Register Company
+                            Create Account
                         </button>
                     </div>
                 </form>
@@ -359,14 +317,127 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         </div>
     </div>
 
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-auth-compat.js"></script>
+    
     <script>
         // Initialize Lucide icons
         lucide.createIcons();
         
+        // Firebase configuration
+        const firebaseConfig = {
+            apiKey: "<?= FIREBASE_API_KEY ?>",
+            authDomain: "<?= FIREBASE_AUTH_DOMAIN ?>",
+            projectId: "<?= FIREBASE_PROJECT_ID ?>",
+            storageBucket: "<?= FIREBASE_STORAGE_BUCKET ?>",
+            messagingSenderId: "<?= FIREBASE_MESSAGING_SENDER_ID ?>",
+            appId: "<?= FIREBASE_APP_ID ?>"
+        };
+        
+        console.log('Firebase config loaded:', firebaseConfig);
+        
+        // Initialize Firebase
+        try {
+            firebase.initializeApp(firebaseConfig);
+            console.log('Firebase initialized successfully');
+        } catch (error) {
+            console.error('Firebase initialization error:', error);
+        }
+        
+        // Google Sign In Function
+        function signInWithGoogle() {
+            console.log('Starting Google sign-in for registration...');
+            
+            // Check if Firebase is available
+            if (typeof firebase === 'undefined') {
+                console.error('Firebase is not loaded');
+                alert('Firebase is not loaded. Please refresh the page and try again.');
+                return;
+            }
+            
+            if (typeof firebase.auth === 'undefined') {
+                console.error('Firebase Auth is not loaded');
+                alert('Firebase Auth is not loaded. Please refresh the page and try again.');
+                return;
+            }
+            
+            const provider = new firebase.auth.GoogleAuthProvider();
+            
+            firebase.auth().signInWithPopup(provider)
+                .then((result) => {
+                    console.log('Google sign-in successful:', result);
+                    
+                    const user = result.user;
+                    console.log('User email:', user.email);
+                    console.log('User display name:', user.displayName);
+                    
+                    // Send the ID token to your server for registration
+                    user.getIdToken().then((idToken) => {
+                        console.log('Got ID token, sending to server for registration...');
+                        
+                        fetch('auth.php', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({
+                                action: 'google_register',
+                                idToken: idToken,
+                                email: user.email,
+                                displayName: user.displayName
+                            })
+                        })
+                        .then(response => {
+                            console.log('Server response status:', response.status);
+                            return response.json();
+                        })
+                        .then(data => {
+                            console.log('Server response data:', data);
+                            if (data.success) {
+                                console.log('Registration successful, redirecting...');
+                                window.location.href = 'main_page.php';
+                            } else {
+                                console.error('Server error:', data.error);
+                                alert('Google registration failed: ' + (data.error || 'Unknown error'));
+                            }
+                        })
+                        .catch(error => {
+                            console.error('Fetch error:', error);
+                            alert('Google registration failed. Please try again.');
+                        });
+                    }).catch(error => {
+                        console.error('Get ID token error:', error);
+                        alert('Failed to get authentication token.');
+                    });
+                })
+                .catch((error) => {
+                    console.error('Google sign-in error:', error);
+                    console.error('Error code:', error.code);
+                    console.error('Error message:', error.message);
+                    
+                    let errorMessage = 'Google sign-in failed: ';
+                    switch(error.code) {
+                        case 'auth/popup-closed-by-user':
+                            errorMessage += 'Sign-in was cancelled.';
+                            break;
+                        case 'auth/popup-blocked':
+                            errorMessage += 'Pop-up was blocked. Please allow pop-ups for this site.';
+                            break;
+                        case 'auth/unauthorized-domain':
+                            errorMessage += 'This domain is not authorized for Google sign-in.';
+                            break;
+                        default:
+                            errorMessage += error.message;
+                    }
+                    alert(errorMessage);
+                });
+        }
+        
         // Password confirmation validation
-        const passwordInput = document.getElementById('admin_password');
-        const confirmPasswordInput = document.getElementById('admin_password_confirm');
-        const confirmPasswordLabel = confirmPasswordInput.nextElementSibling;
+        const passwordInput = document.getElementById('password');
+        const confirmPasswordInput = document.getElementById('password_confirm');
+        const passwordMatchText = document.getElementById('password-match-text');
         
         function checkPasswordMatch() {
             const password = passwordInput.value;
@@ -376,30 +447,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if (password === confirmPassword) {
                     confirmPasswordInput.classList.remove('border-red-300', 'focus:ring-red-500');
                     confirmPasswordInput.classList.add('border-green-300', 'focus:ring-green-500');
-                    if (confirmPasswordLabel) {
-                        confirmPasswordLabel.textContent = '✓ Passwords match';
-                        confirmPasswordLabel.className = 'text-xs text-green-600 mt-1';
-                    }
+                    passwordMatchText.textContent = '✓ Passwords match';
+                    passwordMatchText.className = 'text-xs text-green-600 mt-1';
                 } else {
                     confirmPasswordInput.classList.remove('border-green-300', 'focus:ring-green-500');
                     confirmPasswordInput.classList.add('border-red-300', 'focus:ring-red-500');
-                    if (confirmPasswordLabel) {
-                        confirmPasswordLabel.textContent = '✗ Passwords do not match';
-                        confirmPasswordLabel.className = 'text-xs text-red-600 mt-1';
-                    }
+                    passwordMatchText.textContent = '✗ Passwords do not match';
+                    passwordMatchText.className = 'text-xs text-red-600 mt-1';
                 }
             } else {
                 confirmPasswordInput.classList.remove('border-red-300', 'border-green-300', 'focus:ring-red-500', 'focus:ring-green-500');
-                if (confirmPasswordLabel) {
-                    confirmPasswordLabel.textContent = 'Please enter the same password again';
-                    confirmPasswordLabel.className = 'text-xs text-gray-500 mt-1';
-                }
+                passwordMatchText.textContent = 'Please enter the same password again';
+                passwordMatchText.className = 'text-xs text-gray-500 mt-1';
             }
         }
         
         // Add event listeners
         passwordInput.addEventListener('input', checkPasswordMatch);
         confirmPasswordInput.addEventListener('input', checkPasswordMatch);
+        
+        // Test Google sign-in button
+        const googleBtn = document.getElementById('google-signin-btn');
+        if (googleBtn) {
+            googleBtn.addEventListener('click', function(e) {
+                console.log('Google sign-in button clicked');
+            });
+        }
     </script>
 </body>
 </html> 

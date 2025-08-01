@@ -6,7 +6,7 @@ require_once 'user_settings_db.php';
 
 // Handle logout
 if (isset($_POST['logout'])) {
-    handleLogout();
+    logoutUser();
 }
 
 $message = '';

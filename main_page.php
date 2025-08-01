@@ -1,4 +1,19 @@
 <?php
+// Increase PHP timeout limits for long-running operations
+ini_set('max_execution_time', 1200); // 20 minutes
+ini_set('memory_limit', '1024M'); // Increase memory limit
+set_time_limit(1200); // Set script timeout to 20 minutes
+
+// Set FastCGI timeout headers to prevent 30-second timeout
+if (function_exists('fastcgi_finish_request')) {
+    // This is a FastCGI environment
+    // Try to set timeout via headers
+    header('X-FastCGI-Timeout: 1200');
+}
+
+// Additional timeout prevention
+ignore_user_abort(true);
+
 require_once 'auth_v2.php';
 require_once 'api.php';
 require_once 'user_settings_db.php';
@@ -23,12 +38,17 @@ if (isset($_POST['logout'])) {
 // Handle settings save
 $message = '';
 $messageType = '';
-if (isset($_POST['save_settings'])) {
+if (isset($_POST['save_settings']) && isServerAdmin()) {
+    error_log("Save settings form submitted by user: " . ($_SESSION['user_email'] ?? 'unknown'));
+    error_log("Company ID: " . ($_SESSION['company_id'] ?? 'not set'));
+    error_log("POST data: " . print_r($_POST, true));
+    
     $requiredFields = ['api_url', 'api_identifier', 'api_secret', 'default_ns1', 'default_ns2'];
     $allFieldsProvided = true;
     
     foreach ($requiredFields as $field) {
         if (empty($_POST[$field])) {
+            error_log("Missing required field: " . $field);
             $allFieldsProvided = false;
             break;
         }
@@ -42,6 +62,8 @@ if (isset($_POST['save_settings'])) {
             'default_ns1' => trim($_POST['default_ns1']),
             'default_ns2' => trim($_POST['default_ns2'])
         ];
+        
+        error_log("Settings to save: " . print_r($settings, true));
         
         $userSettings = new UserSettingsDB();
         
@@ -66,11 +88,12 @@ if (isset($_POST['save_settings'])) {
     } else {
         $message = 'Please fill in all required fields.';
         $messageType = 'error';
+        error_log("Not all required fields provided");
     }
 }
 
 // Handle settings test
-if (isset($_POST['test_settings'])) {
+if (isset($_POST['test_settings']) && isServerAdmin()) {
     $userSettings = getUserSettingsDB();
     if ($userSettings) {
         // Test API connection
@@ -417,7 +440,7 @@ if ($currentView === 'export') {
     // Handle CSV export
     if (isset($_POST['export_csv'])) {
         // Get batch parameters
-        $batchSize = 200; // Keep at 200 to avoid timeouts
+        $batchSize = 50; // Reduced from 200 to 50 to prevent timeouts
         $batchNumber = isset($_POST['batch_number']) ? (int)$_POST['batch_number'] : 1;
         $offset = ($batchNumber - 1) * $batchSize;
         
@@ -455,6 +478,11 @@ if ($currentView === 'export') {
                 $errors = 0;
                 
                 foreach ($activeDomains as $domain) {
+                    // Check if we're approaching timeout and extend if needed
+                    if (function_exists('set_time_limit')) {
+                        set_time_limit(1200); // Reset timeout to 20 minutes
+                    }
+                    
                     $domainName = $domain['domainname'] ?? 'Unknown';
                     $domainId = $domain['id'] ?? null;
                     $domainStatus = $domain['status'] ?? 'Unknown';
@@ -474,13 +502,17 @@ if ($currentView === 'export') {
                             $successful++;
                         } else {
                             $errorMsg = $nsResponse['message'] ?? 'Unknown error';
+                            // Check for timeout errors specifically
+                            if (isset($nsResponse['http_code']) && $nsResponse['http_code'] == 0) {
+                                $errorMsg = 'API Timeout - Server took too long to respond';
+                            }
                             fputcsv($file, [$domainName, $domainId, $domainStatus, 'ERROR', $errorMsg, '', '', '', 'Failed to get nameservers', $batchNumber]);
                             $errors++;
                         }
                     }
                     
                     $processed++;
-                    usleep(250000); // 0.25 second delay
+                    usleep(100000); // Reduced to 0.1 second delay for faster processing
                 }
                 
                 fclose($file);
@@ -506,13 +538,22 @@ $dashboardStats = [
     'pending_projects' => 0
 ];
 
-// If user has settings, get real domain data
+// Get recent domains for dashboard
+$recentProjects = [];
+
+// Cache domains data to avoid multiple API calls
+$allDomains = [];
+$userSettings = null;
+
 if (userHasSettingsDB()) {
     $userSettings = getUserSettingsDB();
     if ($userSettings) {
+        // Single API call to get all domains
         $response = getAllDomains($userSettings['api_url'], $userSettings['api_identifier'], $userSettings['api_secret']);
         if (isset($response['domains']['domain']) && is_array($response['domains']['domain'])) {
             $allDomains = $response['domains']['domain'];
+            
+            // Calculate dashboard stats
             $dashboardStats['total_projects'] = count($allDomains);
             
             // Count domains by status
@@ -538,56 +579,46 @@ if (userHasSettingsDB()) {
                         break;
                 }
             }
-        }
-    }
-}
-
-// Get recent domains for dashboard
-$recentProjects = [];
-
-if (userHasSettingsDB()) {
-    $userSettings = getUserSettingsDB();
-    if ($userSettings) {
-        $response = getAllDomains($userSettings['api_url'], $userSettings['api_identifier'], $userSettings['api_secret']);
-        if (isset($response['domains']['domain']) && is_array($response['domains']['domain'])) {
-            $allDomains = $response['domains']['domain'];
             
-            // Sort domains by registration date (most recent first)
-            usort($allDomains, function($a, $b) {
-                $dateA = strtotime($a['regdate'] ?? '1970-01-01');
-                $dateB = strtotime($b['regdate'] ?? '1970-01-01');
-                return $dateB - $dateA;
-            });
-            
-            // Take the 5 most recent domains
-            $recentDomains = array_slice($allDomains, 0, 5);
-            
-            foreach ($recentDomains as $domain) {
-                $status = strtolower($domain['status'] ?? 'unknown');
-                $icon = 'globe'; // default icon
+            // Process recent domains from the same data
+            if (!empty($allDomains)) {
+                // Sort domains by registration date (most recent first)
+                usort($allDomains, function($a, $b) {
+                    $dateA = strtotime($a['regdate'] ?? '1970-01-01');
+                    $dateB = strtotime($b['regdate'] ?? '1970-01-01');
+                    return $dateB - $dateA;
+                });
                 
-                // Set icon based on status
-                switch ($status) {
-                    case 'active':
-                        $icon = 'check-circle';
-                        break;
-                    case 'expired':
-                        $icon = 'alert-triangle';
-                        break;
-                    case 'pending':
-                        $icon = 'clock';
-                        break;
-                    default:
-                        $icon = 'globe';
-                        break;
+                // Take the 5 most recent domains
+                $recentDomains = array_slice($allDomains, 0, 5);
+                
+                foreach ($recentDomains as $domain) {
+                    $status = strtolower($domain['status'] ?? 'unknown');
+                    $icon = 'globe'; // default icon
+                    
+                    // Set icon based on status
+                    switch ($status) {
+                        case 'active':
+                            $icon = 'check-circle';
+                            break;
+                        case 'expired':
+                            $icon = 'alert-triangle';
+                            break;
+                        case 'pending':
+                            $icon = 'clock';
+                            break;
+                        default:
+                            $icon = 'globe';
+                            break;
+                    }
+                    
+                    $recentProjects[] = [
+                        'name' => $domain['domainname'] ?? 'Unknown Domain',
+                        'due_date' => 'Reg: ' . date('M j, Y', strtotime($domain['regdate'] ?? 'now')),
+                        'icon' => $icon,
+                        'status' => $status
+                    ];
                 }
-                
-                $recentProjects[] = [
-                    'name' => $domain['domainname'] ?? 'Unknown Domain',
-                    'due_date' => 'Reg: ' . date('M j, Y', strtotime($domain['regdate'] ?? 'now')),
-                    'icon' => $icon,
-                    'status' => $status
-                ];
             }
         }
     }
@@ -956,6 +987,21 @@ if (userHasSettingsDB()) {
     @keyframes spin{to{transform:rotate(360deg)}}
 
     .animate-spin{animation:spin 1s linear infinite}
+    
+    /* Mobile menu fixes */
+    @media (max-width: 1023px) {
+        .w-80 {
+            position: fixed !important;
+            left: 0 !important;
+            top: 0 !important;
+            height: 100vh !important;
+            z-index: 50 !important;
+            transform: translateX(-100%);
+        }
+        .w-80:not(.-translate-x-full) {
+            transform: translateX(0) !important;
+        }
+    }
     </style>
     
     <script>
@@ -990,7 +1036,7 @@ if (userHasSettingsDB()) {
         <div class="lg:hidden fixed inset-0 bg-black bg-opacity-50 z-30 hidden" id="sidebar-overlay"></div>
         
         <!-- Sidebar -->
-        <div class="w-80 bg-white border-r border-gray-200 flex flex-col lg:translate-x-0 -translate-x-full transition-transform duration-300 fixed lg:relative z-40 h-full">
+        <div class="w-80 bg-white border-r border-gray-200 flex flex-col lg:translate-x-0 -translate-x-full transition-transform duration-300 fixed lg:relative z-40 h-full overflow-y-auto">
             <!-- Logo -->
             <div class="p-6 border-b border-gray-200">
                 <div class="flex items-center space-x-3">
@@ -1062,6 +1108,7 @@ if (userHasSettingsDB()) {
                         </ul>
                     </div>
 
+                    <?php if (isServerAdmin()): ?>
                     <div class="mb-6">
                         <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">SERVER SETUP</h3>
                         <ul class="space-y-1">
@@ -1089,6 +1136,7 @@ if (userHasSettingsDB()) {
                             </li>
                         </ul>
                     </div>
+                    <?php endif; ?>
                 </div>
 
                 <div class="mt-auto">
@@ -1105,12 +1153,14 @@ if (userHasSettingsDB()) {
                                 <?php endif; ?>
                             </a>
                         </li>
+                        <?php if (isServerAdmin()): ?>
                         <li>
                             <a href="?view=debug" class="flex items-center space-x-3 px-3 py-2 <?= $currentView === 'debug' ? 'bg-primary-50 text-primary-700 rounded-lg border-l-4 border-primary-600' : 'text-gray-500 hover:bg-gray-50 rounded-lg transition-colors' ?>">
                                 <i data-lucide="bug" class="w-4 h-4 <?= $currentView === 'debug' ? 'text-primary-600' : 'text-gray-400' ?>"></i>
                                 <span class="text-sm <?= $currentView === 'debug' ? 'font-semibold text-gray-900' : 'font-normal' ?>">Debug Settings</span>
                             </a>
                         </li>
+                        <?php endif; ?>
                         <li>
                             <a href="#" class="flex items-center space-x-3 px-3 py-2 text-gray-500 hover:bg-gray-50 rounded-lg transition-colors">
                                 <i data-lucide="help-circle" class="w-4 h-4 text-gray-400"></i>
@@ -1701,6 +1751,7 @@ if (userHasSettingsDB()) {
 
                  <!-- Settings Form -->
                  <form method="POST" class="space-y-6">
+                     <?php if (isServerAdmin()): ?>
                      <!-- WHMCS API Configuration Section -->
                      <div class="bg-white p-6 rounded-xl border border-gray-200">
                          <h3 class="text-lg font-semibold text-gray-900 mb-4 flex items-center space-x-2">
@@ -1792,9 +1843,11 @@ if (userHasSettingsDB()) {
                              </div>
                          </div>
                      </div>
+                     <?php endif; ?>
 
 
 
+                     <?php if (isServerAdmin()): ?>
                      <!-- Action Buttons -->
                      <div class="flex flex-col sm:flex-row gap-3">
                          <button type="submit" name="save_settings" class="flex-1 bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-lg font-medium transition-colors flex items-center justify-center space-x-2">
@@ -1808,6 +1861,7 @@ if (userHasSettingsDB()) {
                              </button>
                     <?php endif; ?>
                      </div>
+                     <?php endif; ?>
                  </form>
 
                  <!-- User Profile Section -->
@@ -2652,151 +2706,139 @@ if (userHasSettingsDB()) {
                  <!-- Export Content -->
                  <!-- Page Header -->
                  <div class="mb-8">
-                     <h1 class="text-2xl font-bold text-gray-900 mb-2">Export Domain Data</h1>
-                     <p class="text-gray-600">Export your domain information to CSV format for analysis and reporting.</p>
+                     <h1 class="text-2xl font-bold text-gray-900 mb-2">📁 Export Domain Data</h1>
+                     <p class="text-gray-600">Export your domain information to CSV format with progress tracking and timeout protection.</p>
                  </div>
 
-                 <!-- Status Message -->
-                 <?php if ($exportMessage): ?>
-                     <div class="mb-6 p-4 rounded-lg <?= strpos($exportMessage, 'completed') !== false ? 'bg-green-50 border border-green-200 text-green-800' : (strpos($exportMessage, 'Error') !== false ? 'bg-red-50 border border-red-200 text-red-800' : 'bg-yellow-50 border border-yellow-200 text-yellow-800') ?>">
-                         <div class="flex items-center space-x-3">
-                             <i data-lucide="<?= strpos($exportMessage, 'completed') !== false ? 'check-circle' : (strpos($exportMessage, 'Error') !== false ? 'x-circle' : 'alert-triangle') ?>" class="w-5 h-5"></i>
-                             <span><?= htmlspecialchars($exportMessage) ?></span>
-                         </div>
-                     </div>
-                 <?php endif; ?>
-
-                 <!-- Export Results (if any) -->
-                 <?php if (!empty($exportResults)): ?>
-                     <div class="bg-white p-6 rounded-xl border border-gray-200 mb-6">
-                         <h3 class="text-lg font-semibold text-gray-900 mb-4 flex items-center space-x-2">
-                             <i data-lucide="file-text" class="w-5 h-5 text-primary-600"></i>
-                             <span>Export Results - Batch <?= $exportResults['batch_number'] ?></span>
-                         </h3>
-                         <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                             <div class="bg-gray-50 p-4 rounded-lg text-center">
-                                 <div class="text-2xl font-bold text-gray-900"><?= $exportResults['processed'] ?></div>
-                                 <div class="text-sm text-gray-500">Total Processed</div>
-                             </div>
-                             <div class="bg-green-50 p-4 rounded-lg text-center">
-                                 <div class="text-2xl font-bold text-green-600"><?= $exportResults['successful'] ?></div>
-                                 <div class="text-sm text-green-600">Successful</div>
-                             </div>
-                             <div class="bg-red-50 p-4 rounded-lg text-center">
-                                 <div class="text-2xl font-bold text-red-600"><?= $exportResults['errors'] ?></div>
-                                 <div class="text-sm text-red-600">Errors</div>
-                             </div>
-                         </div>
-                         <div class="flex items-center justify-between">
-                             <div class="text-sm text-gray-600">
-                                 <strong>File created:</strong> <?= htmlspecialchars($exportResults['filename']) ?>
-                             </div>
-                             <a href="<?= htmlspecialchars($exportResults['filename']) ?>" download class="bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-lg font-medium transition-colors flex items-center space-x-2">
-                                 <i data-lucide="download" class="w-4 h-4"></i>
-                                 <span>Download CSV</span>
-                             </a>
-                         </div>
-                     </div>
-                 <?php endif; ?>
-
-                 <!-- Export Configuration -->
+                 <!-- Progress-Based Export System -->
                  <div class="bg-white p-6 rounded-xl border border-gray-200 mb-6">
                      <h3 class="text-lg font-semibold text-gray-900 mb-4 flex items-center space-x-2">
-                         <i data-lucide="settings" class="w-5 h-5 text-primary-600"></i>
-                         <span>Batch Export Configuration</span>
+                         <i data-lucide="download" class="w-5 h-5 text-primary-600"></i>
+                         <span>Progress-Based Export</span>
                      </h3>
                      
+                     <!-- Helper Information -->
                      <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
                          <div class="flex items-start space-x-3">
                              <i data-lucide="lightbulb" class="w-5 h-5 text-blue-600 mt-0.5"></i>
                              <div>
-                                 <h4 class="font-semibold text-blue-800 mb-1">Batch Processing</h4>
-                                 <p class="text-sm text-blue-700">Domains are exported in batches of 200 to prevent timeouts. Each batch creates a separate CSV file.</p>
-                            </div>
-                        </div>
-                    </div>
-
-                     <form method="POST" class="space-y-6">
-                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                             <div>
-                                 <div class="flex items-center space-x-2 mb-2">
-                                     <label for="batch_number" class="text-sm font-medium text-gray-700">Batch Number</label>
-                                     <div class="relative group">
-                                         <i data-lucide="info" class="w-4 h-4 text-gray-400 cursor-help"></i>
-                                         <div class="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-10 w-64">
-                                             Specify which batch of domains to export (200 domains per batch)
-                                             <div class="absolute top-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900"></div>
-                                         </div>
-                                     </div>
+                                 <h4 class="font-semibold text-blue-800 mb-1">How It Works</h4>
+                                 <p class="text-sm text-blue-700 mb-2">This system processes domains one by one to avoid timeout errors. Each batch processes 50 domains and creates a separate CSV file.</p>
+                                 <div class="text-xs text-blue-600 space-y-1">
+                                     <div>• <strong>Step 1:</strong> Enter batch number and click "Start Export"</div>
+                                     <div>• <strong>Step 2:</strong> Watch the progress bar as domains are processed</div>
+                                     <div>• <strong>Step 3:</strong> Download the completed CSV file</div>
                                  </div>
-                                 <input 
-                                     type="number" 
-                                     name="batch_number" 
-                                     id="batch_number" 
-                                     class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                                     min="1" 
-                                     value="1"
-                                     required
-                                 >
-                             </div>
-                             <div class="flex items-end">
-                                 <button type="submit" name="export_csv" class="w-full bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-lg font-medium transition-colors flex items-center justify-center space-x-2">
-                                     <i data-lucide="download" class="w-4 h-4"></i>
-                                     <span>Export Batch</span>
-                                 </button>
                              </div>
                          </div>
-                     </form>
+                     </div>
 
-                     <!-- Batch Information -->
-                     <div class="bg-primary-50 border border-primary-200 rounded-lg p-4 mt-6">
-                         <h4 class="font-semibold text-primary-800 mb-2">Batch Breakdown</h4>
-                         <div class="text-sm text-primary-700 space-y-1">
-                             <div>• Batch 1: Domains 1-200</div>
-                             <div>• Batch 2: Domains 201-400</div>
-                             <div>• Batch 3: Domains 401-600</div>
-                             <div>• And so on...</div>
+                     <!-- Export Controls -->
+                     <div id="export-controls">
+                         <form id="export-form" class="space-y-4">
+                             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                 <div>
+                                     <label for="batch_number" class="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
+                                         Batch Number
+                                         <div class="relative group">
+                                             <i data-lucide="info" class="w-4 h-4 text-gray-400 cursor-help"></i>
+                                             <div class="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-800 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap z-10">
+                                                 Batch 1 = domains 1-50, Batch 2 = domains 51-100, etc.
+                                                 <div class="absolute top-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-800"></div>
+                                             </div>
+                                         </div>
+                                     </label>
+                                     <input 
+                                         type="number" 
+                                         id="batch_number" 
+                                         name="batch_number" 
+                                         value="1" 
+                                         min="1"
+                                         class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                                         required
+                                     >
+                                 </div>
+                                 <div class="flex items-end">
+                                     <button type="submit" id="start-btn" class="w-full bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-lg font-medium transition-colors flex items-center justify-center space-x-2">
+                                         <i data-lucide="play" class="w-4 h-4"></i>
+                                         <span>Start Export</span>
+                                     </button>
+                                 </div>
+                             </div>
+                         </form>
+                     </div>
+
+                     <!-- Export Progress -->
+                     <div id="export-progress" style="display: none;" class="mt-6">
+                         <h4 class="font-semibold text-gray-900 mb-4">Export Progress</h4>
+                         
+                         <!-- Progress Bar -->
+                         <div class="mb-4">
+                             <div class="flex justify-between text-sm text-gray-600 mb-2">
+                                 <span>Progress</span>
+                                 <span id="progress-text">0%</span>
+                             </div>
+                             <div class="w-full bg-gray-200 rounded-full h-3">
+                                 <div id="progress-fill" class="bg-primary-600 h-3 rounded-full transition-all duration-300" style="width: 0%"></div>
+                             </div>
                          </div>
+
+                         <!-- Current Status -->
+                         <div id="current-domain" class="text-sm text-gray-600 mb-4">Ready to start...</div>
+
+                         <!-- Recent Results -->
+                         <div id="export-results" class="space-y-2"></div>
+                     </div>
+                 </div>
+
+                 <!-- Available CSV Files -->
+                 <div class="bg-white p-6 rounded-xl border border-gray-200">
+                     <h3 class="text-lg font-semibold text-gray-900 mb-4 flex items-center space-x-2">
+                         <i data-lucide="folder" class="w-5 h-5 text-primary-600"></i>
+                         <span>Available CSV Export Files</span>
+                     </h3>
+                     <div id="csv-files-list" class="csv-files-container">
+                         <!-- CSV files will be loaded here -->
                      </div>
                  </div>
 
                  <!-- Export Information -->
-                 <div class="bg-white p-6 rounded-xl border border-gray-200">
+                 <div class="bg-white p-6 rounded-xl border border-gray-200 mt-6">
                      <h3 class="text-lg font-semibold text-gray-900 mb-4 flex items-center space-x-2">
                          <i data-lucide="info" class="w-5 h-5 text-primary-600"></i>
                          <span>Export Details</span>
-                        </h3>
+                     </h3>
                      
                      <div class="bg-gray-50 rounded-lg p-6">
                          <h4 class="font-semibold text-gray-900 mb-4">CSV File Contents</h4>
-                         <p class="text-gray-600 text-sm mb-4">Each exported CSV file will contain the following information for active domains:</p>
+                         <p class="text-gray-600 text-sm mb-4">Each exported CSV file will contain the following information for all domains:</p>
                          
                          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                              <div class="space-y-2">
                                  <div class="flex items-center space-x-2">
                                      <span class="w-2 h-2 bg-primary-500 rounded-full"></span>
                                      <span class="text-sm">Domain Name</span>
-                            </div>
+                                 </div>
                                  <div class="flex items-center space-x-2">
                                      <span class="w-2 h-2 bg-primary-500 rounded-full"></span>
                                      <span class="text-sm">Domain ID</span>
-                            </div>
+                                 </div>
                                  <div class="flex items-center space-x-2">
                                      <span class="w-2 h-2 bg-primary-500 rounded-full"></span>
                                      <span class="text-sm">Status</span>
-                        </div>
-                    </div>
+                                 </div>
+                             </div>
                              <div class="space-y-2">
                                  <div class="flex items-center space-x-2">
                                      <span class="w-2 h-2 bg-primary-500 rounded-full"></span>
                                      <span class="text-sm">Nameservers (NS1-NS5)</span>
-                </div>
+                                 </div>
                                  <div class="flex items-center space-x-2">
                                      <span class="w-2 h-2 bg-primary-500 rounded-full"></span>
                                      <span class="text-sm">Domain Notes</span>
-            </div>
-        </div>
-    </div>
+                                 </div>
+                             </div>
+                         </div>
 
                          <div class="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-md">
                              <div class="text-sm text-yellow-800">
@@ -2805,8 +2847,268 @@ if (userHasSettingsDB()) {
                          </div>
                      </div>
                  </div>
+
+                 <!-- Progress Export JavaScript -->
+                 <script>
+                     let currentDomain = 0;
+                     let totalDomains = 0;
+                     let batchNumber = 1;
+                     let results = [];
+
+                     // Export form submission
+                     document.getElementById('export-form').addEventListener('submit', function(e) {
+                         e.preventDefault();
+                         
+                         batchNumber = parseInt(document.getElementById('batch_number').value);
+                         
+                         // Show progress section
+                         document.getElementById('export-progress').style.display = 'block';
+                         document.getElementById('export-controls').style.display = 'none';
+                         
+                         // Reset progress
+                         document.getElementById('progress-fill').style.width = '0%';
+                         document.getElementById('progress-text').textContent = '0%';
+                         document.getElementById('current-domain').textContent = 'Starting export...';
+                         document.getElementById('export-results').innerHTML = '';
+                         
+                         results = [];
+                         currentDomain = 0;
+                         
+                         // Start export
+                         startExport();
+                     });
+
+                     function startExport() {
+                         fetch('export_progress.php', {
+                             method: 'POST',
+                             headers: {
+                                 'Content-Type': 'application/x-www-form-urlencoded',
+                             },
+                             body: 'action=start_export&batch_number=' + batchNumber
+                         })
+                         .then(response => response.json())
+                         .then(data => {
+                             if (data.error) {
+                                 console.error('Error:', data.error);
+                                 document.getElementById('current-domain').textContent = 'Error: ' + data.error;
+                                 return;
+                             }
+                             
+                             totalDomains = data.total_domains;
+                             currentDomain = 0;
+                             
+                             // Start processing domains
+                             processNextDomain();
+                         })
+                         .catch(error => {
+                             console.error('Error:', error);
+                             document.getElementById('current-domain').textContent = 'Error starting export: ' + error.message;
+                         });
+                     }
+
+                     function processNextDomain() {
+                         if (currentDomain >= totalDomains) {
+                             return;
+                         }
+
+                         fetch('export_progress.php', {
+                             method: 'POST',
+                             headers: {
+                                 'Content-Type': 'application/x-www-form-urlencoded',
+                             },
+                             body: 'action=progress&batch_number=' + batchNumber + '&current_domain=' + currentDomain + '&total_domains=' + totalDomains
+                         })
+                         .then(response => response.json())
+                         .then(data => {
+                             if (data.error) {
+                                 console.error('Error:', data.error);
+                             }
+                             
+                             // Check if export is complete
+                             if (data.status === 'complete') {
+                                 document.getElementById('progress-fill').style.width = '100%';
+                                 document.getElementById('progress-text').textContent = '100%';
+                                 document.getElementById('current-domain').innerHTML = `
+                                     <strong class="text-green-600">✅ Export completed successfully!</strong><br>
+                                     <small class="text-gray-600">Processed ${data.total_processed} domains</small>
+                                 `;
+                                 
+                                 // Show download button
+                                 showDownloadButton(data.filename);
+                                 
+                                 // Reload CSV files list
+                                 setTimeout(loadCsvFiles, 1000);
+                                 return;
+                             }
+                             
+                             // Update progress
+                             const progress = data.progress || 0;
+                             document.getElementById('progress-fill').style.width = progress + '%';
+                             document.getElementById('progress-text').textContent = progress + '%';
+                             
+                             // Update current domain info
+                             document.getElementById('current-domain').textContent = 
+                                 `Processing: ${data.domain_name} (${data.current_domain}/${data.total_domains})`;
+                             
+                             // Store result
+                             results.push({
+                                 domain: data.domain_name,
+                                 success: data.success || false,
+                                 error: data.error || null,
+                                 nameservers: data.nameservers || null
+                             });
+                             
+                             // Update results display
+                             updateResultsDisplay();
+                             
+                             currentDomain++;
+                             
+                             // Process next domain after a short delay
+                             setTimeout(processNextDomain, 100);
+                         })
+                         .catch(error => {
+                             console.error('Error:', error);
+                             document.getElementById('current-domain').textContent = 'Error processing domain: ' + error.message;
+                         });
+                     }
+
+                     function updateResultsDisplay() {
+                         const resultsDiv = document.getElementById('export-results');
+                         let html = '<h5 class="font-medium text-gray-900 mb-2">Recent Results:</h5>';
+                         
+                         const recentResults = results.slice(-5);
+                         recentResults.forEach(result => {
+                             const statusClass = result.success ? 'border-green-200 bg-green-50' : 'border-red-200 bg-red-50';
+                             const statusText = result.success ? '✅ Success' : '❌ ' + (result.error || 'Error');
+                             
+                             html += `
+                                 <div class="p-3 border rounded-lg ${statusClass}">
+                                     <strong class="text-sm">${result.domain}</strong> - <span class="text-sm">${statusText}</span>
+                                 </div>
+                             `;
+                         });
+                         
+                         resultsDiv.innerHTML = html;
+                     }
+
+                     function loadCsvFiles() {
+                         fetch('export_progress.php', {
+                             method: 'POST',
+                             headers: {
+                                 'Content-Type': 'application/x-www-form-urlencoded',
+                             },
+                             body: 'action=get_csv_files'
+                         })
+                         .then(response => response.json())
+                         .then(data => {
+                             const csvFilesList = document.getElementById('csv-files-list');
+                             
+                             if (data.total_files === 0) {
+                                 csvFilesList.innerHTML = `
+                                     <div class="text-center py-8 text-gray-500">
+                                         <i data-lucide="folder-open" class="w-12 h-12 mx-auto mb-4 text-gray-300"></i>
+                                         <p>No CSV files found. Export some domains to see files here.</p>
+                                     </div>
+                                 `;
+                                 return;
+                             }
+                             
+                             let html = `<p class="text-sm text-gray-600 mb-4">Found ${data.total_files} CSV file(s):</p>`;
+                             
+                             data.files.forEach(file => {
+                                 html += `
+                                     <div class="border border-gray-200 rounded-lg p-4 mb-3 bg-gray-50">
+                                         <div class="flex justify-between items-center">
+                                             <div class="flex-1">
+                                                 <h4 class="font-medium text-gray-900 text-sm mb-1">📄 ${file.filename}</h4>
+                                                 <p class="text-xs text-gray-500 mb-1"><strong>Size:</strong> ${file.size_formatted} bytes</p>
+                                                 <p class="text-xs text-gray-500"><strong>Created:</strong> ${file.date}</p>
+                                             </div>
+                                             <div>
+                                                 <a href="${file.filename}" download class="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded text-xs font-medium transition-colors">
+                                                     📥 Download
+                                                 </a>
+                                             </div>
+                                         </div>
+                                     </div>
+                                 `;
+                             });
+                             
+                             csvFilesList.innerHTML = html;
+                         })
+                         .catch(error => {
+                             console.error('Error loading CSV files:', error);
+                             document.getElementById('csv-files-list').innerHTML = `
+                                 <div class="text-center py-8 text-red-500">
+                                     <p>Error loading CSV files. Please refresh the page.</p>
+                                 </div>
+                             `;
+                         });
+                     }
+
+                     function showDownloadButton(filename) {
+                         const resultsDiv = document.getElementById('export-results');
+                         const downloadHtml = `
+                             <div class="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg">
+                                 <h4 class="font-semibold text-green-800 mb-2">📁 Export Complete!</h4>
+                                 <p class="text-sm text-green-700 mb-3">Your CSV file has been generated successfully.</p>
+                                 <div class="flex space-x-3">
+                                     <a href="${filename}" download class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+                                         📥 Download CSV File
+                                     </a>
+                                     <button onclick="location.reload()" class="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+                                         🔄 Export Another Batch
+                                     </button>
+                                 </div>
+                             </div>
+                         `;
+                         resultsDiv.innerHTML += downloadHtml;
+                     }
+
+                     // Load CSV files when page loads
+                     document.addEventListener('DOMContentLoaded', function() {
+                         loadCsvFiles();
+                     });
+                 </script>
+
+                 <!-- CSV Files Container Styles -->
+                 <style>
+                     .csv-files-container {
+                         max-height: 600px;
+                         overflow-y: auto;
+                         border: 1px solid #ddd;
+                         border-radius: 8px;
+                         background-color: #fff;
+                         padding: 20px;
+                     }
+                     .csv-files-container::-webkit-scrollbar {
+                         width: 8px;
+                     }
+                     .csv-files-container::-webkit-scrollbar-track {
+                         background: #f1f1f1;
+                         border-radius: 4px;
+                     }
+                     .csv-files-container::-webkit-scrollbar-thumb {
+                         background: #c1c1c1;
+                         border-radius: 4px;
+                     }
+                     .csv-files-container::-webkit-scrollbar-thumb:hover {
+                         background: #a8a8a8;
+                     }
+                 </style>
                  
                  <?php elseif ($currentView === 'database_setup'): ?>
+                 <?php if (!isServerAdmin()): ?>
+                     <div class="bg-red-50 border border-red-200 rounded-xl p-6">
+                         <div class="flex items-center space-x-3">
+                             <i data-lucide="alert-triangle" class="w-6 h-6 text-red-600"></i>
+                             <div>
+                                 <h3 class="text-lg font-semibold text-red-900">Access Denied</h3>
+                                 <p class="text-red-800 mt-1">You don't have permission to access Database Setup. Only server administrators can configure the database.</p>
+                             </div>
+                         </div>
+                     </div>
+                 <?php else: ?>
                  <!-- Database Setup Content -->
                  <!-- Page Header -->
                  <div class="mb-8">
@@ -2994,6 +3296,7 @@ if (userHasSettingsDB()) {
                          </div>
                      </div>
                  </div>
+                 <?php endif; ?>
                  
                  <?php elseif ($currentView === 'database_view'): ?>
                  <!-- Database View Content -->
@@ -3533,6 +3836,10 @@ if (userHasSettingsDB()) {
                                  <i data-lucide="download" class="w-4 h-4 mr-2"></i>
                                  Export CSV
                              </a>
+                             <a href="?view=debug" class="inline-flex items-center px-4 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors">
+                                 <i data-lucide="wrench" class="w-4 h-4 mr-2"></i>
+                                 Debug Tools
+                             </a>
                              <button type="button" id="clearOldData" class="inline-flex items-center px-4 py-2 bg-red-600 text-white font-medium rounded-lg hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition-colors">
                                  <i data-lucide="trash-2" class="w-4 h-4 mr-2"></i>
                                  Clear Old Data
@@ -3542,6 +3849,17 @@ if (userHasSettingsDB()) {
                  </div>
                  
                  <?php elseif ($currentView === 'create_tables'): ?>
+                 <?php if (!isServerAdmin()): ?>
+                     <div class="bg-red-50 border border-red-200 rounded-xl p-6">
+                         <div class="flex items-center space-x-3">
+                             <i data-lucide="alert-triangle" class="w-6 h-6 text-red-600"></i>
+                             <div>
+                                 <h3 class="text-lg font-semibold text-red-900">Access Denied</h3>
+                                 <p class="text-red-800 mt-1">You don't have permission to access Create Tables. Only server administrators can create database tables.</p>
+                             </div>
+                         </div>
+                     </div>
+                 <?php else: ?>
                  <!-- Create Tables Content -->
                  <!-- Page Header -->
                  <div class="mb-8">
@@ -3643,8 +3961,20 @@ if (userHasSettingsDB()) {
                          <span>Start Domain Sync</span>
                      </a>
                  </div>
+                 <?php endif; ?>
                  
                  <?php elseif ($currentView === 'debug'): ?>
+                 <?php if (!isServerAdmin()): ?>
+                     <div class="bg-red-50 border border-red-200 rounded-xl p-6">
+                         <div class="flex items-center space-x-3">
+                             <i data-lucide="alert-triangle" class="w-6 h-6 text-red-600"></i>
+                             <div>
+                                 <h3 class="text-lg font-semibold text-red-900">Access Denied</h3>
+                                 <p class="text-red-800 mt-1">You don't have permission to access Debug Settings. Only server administrators can view debug information.</p>
+                             </div>
+                         </div>
+                     </div>
+                 <?php else: ?>
                  <!-- Debug Settings Content -->
                  <?php
                  // Generate debug information
@@ -3675,11 +4005,11 @@ if (userHasSettingsDB()) {
                      'settings_file_readable' => false
                  ];
                  
-                 if (isset($_SESSION['user_email'])) {
+                 if (isset($_SESSION['user_email']) && isset($_SESSION['company_id'])) {
                      $userSettings = new UserSettingsDB();
                      $debugInfo['filesystem']['settings_file'] = 'Database (user_settings table)';
-                     $debugInfo['filesystem']['settings_file_exists'] = $userSettings->hasSettings($_SESSION['user_email']);
-                     $debugInfo['filesystem']['settings_file_readable'] = $userSettings->hasSettings($_SESSION['user_email']);
+                     $debugInfo['filesystem']['settings_file_exists'] = $userSettings->hasSettings($_SESSION['company_id'], $_SESSION['user_email']);
+                     $debugInfo['filesystem']['settings_file_readable'] = $userSettings->hasSettings($_SESSION['company_id'], $_SESSION['user_email']);
                  }
                  
                  // Get environment information
@@ -3936,6 +4266,89 @@ if (userHasSettingsDB()) {
                      </div>
                  </div>
 
+                 <!-- Debug Tools Section -->
+                 <div class="bg-white p-6 rounded-xl border border-gray-200 mb-6">
+                     <h3 class="text-lg font-semibold text-gray-900 mb-4 flex items-center space-x-2">
+                         <i data-lucide="wrench" class="w-5 h-5 text-primary-600"></i>
+                         <span>Debug Tools</span>
+                     </h3>
+                     <p class="text-gray-600 mb-6">Advanced debugging tools for troubleshooting API connections, sync issues, and domain management.</p>
+                     
+                     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                         <!-- API Debug Tools -->
+                         <div class="space-y-3">
+                             <h4 class="font-medium text-gray-900 text-sm uppercase tracking-wider">API Testing</h4>
+                             <div class="space-y-2">
+                                 <a href="test_api_debug.php" class="inline-flex items-center px-4 py-2 bg-yellow-600 text-white font-medium rounded-lg hover:bg-yellow-700 focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:ring-offset-2 transition-colors w-full">
+                                     <i data-lucide="bug" class="w-4 h-4 mr-2"></i>
+                                     Debug API
+                                 </a>
+                                 <a href="debug_html_response.php" class="inline-flex items-center px-4 py-2 bg-orange-600 text-white font-medium rounded-lg hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 transition-colors w-full">
+                                     <i data-lucide="search" class="w-4 h-4 mr-2"></i>
+                                     HTML Debug
+                                 </a>
+                                 <a href="test_output_buffering.php" class="inline-flex items-center px-4 py-2 bg-purple-600 text-white font-medium rounded-lg hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 transition-colors w-full">
+                                     <i data-lucide="shield" class="w-4 h-4 mr-2"></i>
+                                     Output Test
+                                 </a>
+                             </div>
+                         </div>
+                         
+                         <!-- Sync Debug Tools -->
+                         <div class="space-y-3">
+                             <h4 class="font-medium text-gray-900 text-sm uppercase tracking-wider">Sync Testing</h4>
+                             <div class="space-y-2">
+                                 <a href="debug_sync_errors.php" class="inline-flex items-center px-4 py-2 bg-red-600 text-white font-medium rounded-lg hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition-colors w-full">
+                                     <i data-lucide="alert-triangle" class="w-4 h-4 mr-2"></i>
+                                     Sync Errors
+                                 </a>
+                                 <a href="test_small_sync.php" class="inline-flex items-center px-4 py-2 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 transition-colors w-full">
+                                     <i data-lucide="play" class="w-4 h-4 mr-2"></i>
+                                     Test Sync
+                                 </a>
+                                 <a href="add_company_id_to_tables.php" class="inline-flex items-center px-4 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors w-full">
+                                     <i data-lucide="database" class="w-4 h-4 mr-2"></i>
+                                     Add Company ID
+                                 </a>
+                             </div>
+                         </div>
+                         
+                         <!-- Nameserver Debug Tools -->
+                         <div class="space-y-3">
+                             <h4 class="font-medium text-gray-900 text-sm uppercase tracking-wider">Nameserver Testing</h4>
+                             <div class="space-y-2">
+                                 <a href="test_nameservers.php" class="inline-flex items-center px-4 py-2 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 transition-colors w-full">
+                                     <i data-lucide="server" class="w-4 h-4 mr-2"></i>
+                                     Test Nameservers
+                                 </a>
+                                 <a href="debug_nameserver_api.php" class="inline-flex items-center px-4 py-2 bg-teal-600 text-white font-medium rounded-lg hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 transition-colors w-full">
+                                     <i data-lucide="search" class="w-4 h-4 mr-2"></i>
+                                     Debug Nameserver API
+                                 </a>
+                                 <a href="check_domain_data.php" class="inline-flex items-center px-4 py-2 bg-pink-600 text-white font-medium rounded-lg hover:bg-pink-700 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:ring-offset-2 transition-colors w-full">
+                                     <i data-lucide="list" class="w-4 h-4 mr-2"></i>
+                                     Check Domain Data
+                                 </a>
+                             </div>
+                         </div>
+                         
+                         <!-- Advanced Debug Tools -->
+                         <div class="space-y-3">
+                             <h4 class="font-medium text-gray-900 text-sm uppercase tracking-wider">Advanced Testing</h4>
+                             <div class="space-y-2">
+                                 <a href="test_nameserver_methods.php" class="inline-flex items-center px-4 py-2 bg-cyan-600 text-white font-medium rounded-lg hover:bg-cyan-700 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:ring-offset-2 transition-colors w-full">
+                                     <i data-lucide="test-tube" class="w-4 h-4 mr-2"></i>
+                                     Test Nameserver Methods
+                                 </a>
+                                 <a href="test_nameserver_display.php" class="inline-flex items-center px-4 py-2 bg-lime-600 text-white font-medium rounded-lg hover:bg-lime-700 focus:outline-none focus:ring-2 focus:ring-lime-500 focus:ring-offset-2 transition-colors w-full">
+                                     <i data-lucide="eye" class="w-4 h-4 mr-2"></i>
+                                     Test Nameserver Display
+                                 </a>
+                             </div>
+                         </div>
+                     </div>
+                 </div>
+
                  <!-- Action Buttons -->
                  <div class="flex flex-col sm:flex-row gap-4">
                      <a href="?view=settings" class="bg-primary-600 hover:bg-primary-700 text-white px-6 py-3 rounded-lg font-medium transition-colors flex items-center justify-center space-x-2">
@@ -3952,6 +4365,7 @@ if (userHasSettingsDB()) {
                      </button>
                  </div>
                  
+                 <?php endif; ?>
                  <?php endif; ?>
              </main>
          </div>
@@ -4014,6 +4428,15 @@ if (userHasSettingsDB()) {
         // Sync functionality
         let syncInProgress = false;
         let currentLogId = null;
+        
+        // Clear old data functionality for debug page
+        document.getElementById('clearOldData')?.addEventListener('click', function() {
+            if (confirm('Are you sure you want to clear old data? This will remove domains that haven\'t been synced in the last 30 days.')) {
+                // Add your clear old data logic here
+                console.log('Clear old data functionality would be implemented here');
+                alert('Clear old data functionality would be implemented here');
+            }
+        });
         
         // Start sync button
         document.getElementById('startSync')?.addEventListener('click', function() {
@@ -4720,6 +5143,19 @@ if (userHasSettingsDB()) {
                     sidebarOverlay.classList.add('hidden');
                 });
             }
+            
+            // Close mobile menu when clicking on a menu item
+            const menuItems = sidebar.querySelectorAll('a[href]');
+            menuItems.forEach(function(item) {
+                item.addEventListener('click', function() {
+                    if (window.innerWidth < 1024) { // Only on mobile
+                        sidebar.classList.add('-translate-x-full');
+                        if (sidebarOverlay) {
+                            sidebarOverlay.classList.add('hidden');
+                        }
+                    }
+                });
+            });
         }
         
 

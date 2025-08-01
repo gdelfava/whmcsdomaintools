@@ -38,7 +38,8 @@ try {
 
     // Get user settings
     $userSettings = new UserSettingsDB();
-    $settings = $userSettings->loadSettings($userEmail);
+    $companyId = $_SESSION['company_id'] ?? null;
+    $settings = $userSettings->loadSettings($companyId, $userEmail);
     
     if (!$settings) {
         echo json_encode(['success' => false, 'error' => 'User settings not found']);
@@ -58,10 +59,38 @@ try {
         'responsetype' => 'json'
     ]);
 
-    if (!isset($response['result']) || $response['result'] !== 'success') {
+    // Check for API errors
+    if (isset($response['error'])) {
         echo json_encode([
             'success' => false, 
-            'error' => 'API call failed: ' . ($response['message'] ?? 'Unknown error')
+            'error' => 'CURL error: ' . $response['error']
+        ]);
+        exit;
+    }
+
+    if (isset($response['result']) && $response['result'] === 'error') {
+        $errorMsg = $response['message'] ?? 'Unknown API error';
+        if (isset($response['raw_response'])) {
+            $errorMsg .= ' (Raw response: ' . $response['raw_response'] . ')';
+        }
+        echo json_encode([
+            'success' => false, 
+            'error' => 'API error: ' . $errorMsg
+        ]);
+        exit;
+    }
+
+    if (!isset($response['result']) || $response['result'] !== 'success') {
+        $errorMsg = 'API call failed';
+        if (isset($response['message'])) {
+            $errorMsg .= ': ' . $response['message'];
+        }
+        if (isset($response['raw_response'])) {
+            $errorMsg .= ' (Raw response: ' . $response['raw_response'] . ')';
+        }
+        echo json_encode([
+            'success' => false, 
+            'error' => $errorMsg
         ]);
         exit;
     }

@@ -10,6 +10,8 @@ function curlCall($url, $postData) {
     curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($postData));
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false); // For testing
+    curl_setopt($ch, CURLOPT_TIMEOUT, 60); // Increased timeout to 60 seconds
+    curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true); // Follow redirects
 
     $response = curl_exec($ch);
     $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
@@ -20,7 +22,35 @@ function curlCall($url, $postData) {
 
     curl_close($ch);
 
-    return json_decode($response, true);
+    // Check if response is valid JSON
+    $decoded = json_decode($response, true);
+    
+    if (json_last_error() !== JSON_ERROR_NONE) {
+        // Response is not valid JSON - likely an HTML error page
+        $errorMessage = 'API returned non-JSON response';
+        
+        // Try to extract useful information from HTML response
+        if (strpos($response, '<br />') !== false || strpos($response, '<b>') !== false) {
+            // Common PHP error patterns
+            if (preg_match('/<b>.*?<\/b>/', $response, $matches)) {
+                $errorMessage .= ': ' . strip_tags($matches[0]);
+            } elseif (preg_match('/<br \/>\s*<b>(.*?)<\/b>/', $response, $matches)) {
+                $errorMessage .= ': ' . strip_tags($matches[1]);
+            }
+        }
+        
+        // Log the raw response for debugging
+        error_log("API non-JSON response: " . substr($response, 0, 500));
+        
+        return [
+            'result' => 'error',
+            'message' => $errorMessage,
+            'http_code' => $httpCode,
+            'raw_response' => substr($response, 0, 200) // First 200 chars for debugging
+        ];
+    }
+
+    return $decoded;
 }
 
 function getAllDomains($url, $identifier, $secret) {
@@ -238,5 +268,4 @@ function getServers($url, $identifier, $secret) {
         'fetchStatus' => true,
         'responsetype' => 'json'
     ]);
-}
-?> 
+} 

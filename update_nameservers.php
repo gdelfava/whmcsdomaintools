@@ -10,7 +10,7 @@ requireAuth();
 
 // Handle logout
 if (isset($_POST['logout'])) {
-    handleLogout();
+    logoutUser();
 }
 
 // Check if user has configured their API settings

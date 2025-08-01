@@ -99,6 +99,7 @@ try {
                         </ul>
                     </div>
 
+                    <?php if (isServerAdmin()): ?>
                     <div class="mb-6">
                         <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">SERVER SETUP</h3>
                         <ul class="space-y-1">
@@ -116,6 +117,7 @@ try {
                             </li>
                         </ul>
                     </div>
+                    <?php endif; ?>
                 </div>
 
                 <div class="mt-auto">
