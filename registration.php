@@ -63,6 +63,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $contactEmail = sanitizeInput($_POST['contact_email'] ?? '');
                 $adminEmail = sanitizeInput($_POST['admin_email'] ?? '');
                 $adminPassword = $_POST['admin_password'] ?? '';
+                $adminPasswordConfirm = $_POST['admin_password_confirm'] ?? '';
                 $adminFirstName = sanitizeInput($_POST['admin_first_name'] ?? '');
                 $adminLastName = sanitizeInput($_POST['admin_last_name'] ?? '');
                 
@@ -86,6 +87,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 } else {
                     $passwordErrors = validatePassword($adminPassword);
                     $errors = array_merge($errors, $passwordErrors);
+                }
+                
+                if (empty($adminPasswordConfirm)) {
+                    $errors[] = 'Password confirmation is required';
+                } elseif ($adminPassword !== $adminPasswordConfirm) {
+                    $errors[] = 'Passwords do not match';
                 }
                 
                 if (empty($adminFirstName)) {
@@ -322,6 +329,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                        placeholder="Enter admin password">
                                 <p class="text-xs text-gray-500 mt-1">Must be at least 8 characters with uppercase, lowercase, and number</p>
                             </div>
+                            
+                            <div>
+                                <label for="admin_password_confirm" class="block text-xs font-medium text-gray-700 mb-1">Confirm Password *</label>
+                                <input type="password" id="admin_password_confirm" name="admin_password_confirm" required
+                                       class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent text-sm"
+                                       placeholder="Confirm admin password">
+                                <p class="text-xs text-gray-500 mt-1">Please enter the same password again</p>
+                            </div>
                         </div>
                     </div>
                     
@@ -347,6 +362,44 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <script>
         // Initialize Lucide icons
         lucide.createIcons();
+        
+        // Password confirmation validation
+        const passwordInput = document.getElementById('admin_password');
+        const confirmPasswordInput = document.getElementById('admin_password_confirm');
+        const confirmPasswordLabel = confirmPasswordInput.nextElementSibling;
+        
+        function checkPasswordMatch() {
+            const password = passwordInput.value;
+            const confirmPassword = confirmPasswordInput.value;
+            
+            if (confirmPassword.length > 0) {
+                if (password === confirmPassword) {
+                    confirmPasswordInput.classList.remove('border-red-300', 'focus:ring-red-500');
+                    confirmPasswordInput.classList.add('border-green-300', 'focus:ring-green-500');
+                    if (confirmPasswordLabel) {
+                        confirmPasswordLabel.textContent = '✓ Passwords match';
+                        confirmPasswordLabel.className = 'text-xs text-green-600 mt-1';
+                    }
+                } else {
+                    confirmPasswordInput.classList.remove('border-green-300', 'focus:ring-green-500');
+                    confirmPasswordInput.classList.add('border-red-300', 'focus:ring-red-500');
+                    if (confirmPasswordLabel) {
+                        confirmPasswordLabel.textContent = '✗ Passwords do not match';
+                        confirmPasswordLabel.className = 'text-xs text-red-600 mt-1';
+                    }
+                }
+            } else {
+                confirmPasswordInput.classList.remove('border-red-300', 'border-green-300', 'focus:ring-red-500', 'focus:ring-green-500');
+                if (confirmPasswordLabel) {
+                    confirmPasswordLabel.textContent = 'Please enter the same password again';
+                    confirmPasswordLabel.className = 'text-xs text-gray-500 mt-1';
+                }
+            }
+        }
+        
+        // Add event listeners
+        passwordInput.addEventListener('input', checkPasswordMatch);
+        confirmPasswordInput.addEventListener('input', checkPasswordMatch);
     </script>
 </body>
 </html> 
