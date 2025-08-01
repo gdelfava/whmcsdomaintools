@@ -12,7 +12,7 @@ if (session_status() === PHP_SESSION_NONE) {
  */
 function requireAuth() {
     if (!isLoggedIn()) {
-        header('Location: login_v2.php');
+        header('Location: registration.php');
         exit;
     }
 }

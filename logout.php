@@ -5,6 +5,6 @@ require_once 'auth_v2.php';
 logoutUser();
 
 // Redirect to login page
-header('Location: login_v2.php');
+header('Location: registration.php');
 exit;
 ?> 

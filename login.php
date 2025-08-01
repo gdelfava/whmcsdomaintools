@@ -138,7 +138,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <!-- Registration Link -->
             <div class="text-center">
                 <p class="text-sm text-gray-600">Don't have an account?</p>
-                <a href="login_v2.php" class="text-primary-600 hover:text-primary-700 font-medium text-sm">
+                                        <a href="registration.php" class="text-primary-600 hover:text-primary-700 font-medium text-sm">
                     Register your company
                 </a>
             </div>
