@@ -1,122 +1,133 @@
-# Domain Updater
+# Domain Tools Management Suite
 
-A PHP-based web application for managing and updating domain nameservers. This tool provides a user-friendly interface for bulk domain management operations.
+A comprehensive domain management application for WHMCS integration with multi-user and multi-company support.
 
-## Features
+## 📁 Project Structure
 
-- **User Authentication**: Secure login system with session management
-- **Domain Management**: Add, edit, and delete domain entries
-- **Nameserver Updates**: Bulk update nameservers for multiple domains
-- **Server Management**: Configure and manage multiple DNS servers
-- **Export Functionality**: Export domain lists in various formats
-- **Performance Monitoring**: Built-in performance tracking and optimization
-- **Responsive UI**: Modern, mobile-friendly interface
+### Core Application Files
+- `index.php` - Main entry point
+- `main_page.php` - Main application interface
+- `auth_v2.php` - Authentication system
+- `config.php` - Application configuration
+- `database_v2.php` - Database operations
+- `api.php` - WHMCS API integration
+- `user_settings_db.php` - User settings management
+- `cache.php` - Caching system
 
-## Installation
+### Authentication & User Management
+- `login.php` - User login page
+- `logout.php` - Logout functionality
+- `registration.php` - User registration
+- `user_management.php` - User management interface
+- `company_profile.php` - Company profile management
 
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/gdelfava/whmcsdomaintools.git
-   cd whmcsdomaintools
-   ```
+### Domain Management
+- `domains_db.php` - Domain database operations
+- `domain_sync.php` - Domain synchronization
+- `sync_interface.php` - Sync interface
+- `add_domain.php` - Add domain functionality
+- `update_domain.php` - Update domain functionality
+- `delete_domain.php` - Delete domain functionality
+- `update_nameservers.php` - Nameserver updates
 
-2. Configure your web server to point to the project directory
+### Settings & Configuration
+- `settings.php` - Application settings interface
+- `user_settings.php` - User settings interface
+- `create_tables.php` - Database table creation
+- `setup_database.php` - Database setup
+- `setup-env.php` - Environment setup
 
-3. Set up environment variables for sensitive configuration:
-   ```bash
-   # Option 1: Use the interactive setup script
-   php setup-env.php
-   
-   # Option 2: Manual setup
-   cp env.example .env
-   # Edit .env with your actual Firebase credentials
-   nano .env
-   ```
+### Export & Utilities
+- `export_domains.php` - Domain export functionality
+- `export_progress.php` - Export progress tracking
+- `list_csv_files.php` - CSV file listing
+- `clear-cache.php` - Cache clearing
+- `performance.php` - Performance monitoring
 
-4. Ensure PHP 7.4+ is installed with required extensions
+### AJAX Handlers
+- `ajax-clear-cache.php` - Cache clearing AJAX
+- `ajax-servers.php` - Server AJAX operations
 
-## Usage
+### Directories
+- `cache/` - Application cache files
+- `css/` - Stylesheets
+- `js/` - JavaScript files
+- `logs/` - Application logs
+- `user_settings/` - User settings files
 
-1. Start the development server:
-   ```bash
-   php -S localhost:8001
-   ```
+## 📚 Documentation (`docs/`)
+- All `.md` documentation files
+- SQL schema files
+- Migration guides
+- Troubleshooting documentation
 
-2. Navigate to `http://localhost:8001` in your browser
+## 🧪 Tests (`tests/`)
+- All test files (`test_*.php`)
+- Debug files (`debug_*.php`)
+- Development and debugging utilities
 
-3. Log in with your credentials
+## 📊 Exports (`exports/`)
+- CSV export files
+- Batch processing results
+- Export data files
 
-4. Use the dashboard to manage your domains and nameservers
+## 🔄 Migrations (`migrations/`)
+- Database migration scripts
+- Schema update files
+- Multi-user migration files
 
-## File Structure
+## 🚀 Quick Start
 
-```
-domain-updater/
-├── api.php                 # API endpoints
-├── auth.php               # Authentication logic
-├── config.php             # Configuration settings
-├── css/                   # Stylesheets
-├── js/                    # JavaScript files
-├── cache/                 # Cache directory (auto-generated)
-├── logs/                  # Log files (auto-generated)
-├── user_settings/         # User preferences (auto-generated)
-└── README.md             # This file
-```
+1. **Upload files** to your web server
+2. **Configure environment** - Copy `.env.example` to `.env` and update settings
+3. **Set up database** - Run `setup_database.php` to create tables
+4. **Configure settings** - Access the application and configure WHMCS API settings
+5. **Start managing domains** - Use the dashboard to manage your domains
 
-## Configuration
+## 🔧 Configuration
 
 ### Environment Variables
+- Copy `.env.example` to `.env`
+- Update database connection details
+- Configure WHMCS API credentials
 
-For security, sensitive configuration is stored in environment variables. Create a `.env` file in the project root with the following variables:
+### Database Setup
+- Ensure MySQL/MariaDB is running
+- Create a database for the application
+- Run `create_tables.php` to set up the schema
 
-```bash
-# Firebase Configuration
-FIREBASE_API_KEY=your_firebase_api_key_here
-FIREBASE_AUTH_DOMAIN=your_project.firebaseapp.com
-FIREBASE_PROJECT_ID=your_project_id
-FIREBASE_STORAGE_BUCKET=your_project.firebasestorage.app
-FIREBASE_MESSAGING_SENDER_ID=your_messaging_sender_id
-FIREBASE_APP_ID=your_app_id_here
+### WHMCS API Setup
+- Create API credentials in WHMCS admin panel
+- Configure API URL in application settings
+- Test API connection in debug tools
 
-# Optional: Encryption key for additional security
-ENCRYPTION_KEY=your_custom_encryption_key_here
-```
+## 🛠️ Development
 
-**Important**: The `.env` file is automatically ignored by Git to prevent exposing sensitive data.
+### File Organization
+- Core application files remain in root directory
+- Documentation moved to `docs/`
+- Test files moved to `tests/`
+- Export files moved to `exports/`
+- Migration files moved to `migrations/`
 
-### Other Configuration
+### Adding New Features
+- Follow existing code patterns
+- Update documentation in `docs/`
+- Add tests to `tests/` directory
+- Maintain backward compatibility
 
-Edit `config.php` to configure:
-- Cache settings
-- Logging preferences
-- Other non-sensitive settings
+## 🔍 Debug Tools
 
-## Security
+Access debug tools through the application interface (admin only):
+- System diagnostics
+- Database connection testing
+- API connectivity checks
+- Settings validation
 
-- All user inputs are sanitized
-- Session-based authentication
-- CSRF protection
-- Secure password handling
+## 📞 Support
 
-## Performance
+For support and questions, contact: guilio@kaldera.co.za
 
-The application includes several performance optimizations:
-- Caching system for API responses
-- Optimized CSS and JavaScript
-- Efficient database queries
-- Background processing for bulk operations
+## 📝 License
 
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Submit a pull request
-
-## License
-
-This project is licensed under the MIT License.
-
-## Support
-
-For support and questions, please open an issue on GitHub. 
+This application is proprietary software. All rights reserved. 

@@ -192,7 +192,7 @@ if (isset($_POST['export_csv'])) {
     }
     
     // Create CSV file with batch number
-    $filename = 'domains_all_batch' . $batchNumber . '_' . date('Y-m-d_H-i-s') . '.csv';
+    $filename = 'exports/domains_all_batch' . $batchNumber . '_' . date('Y-m-d_H-i-s') . '.csv';
     $file = fopen($filename, 'w');
     fputcsv($file, ['Domain Name', 'Domain ID', 'Status', 'NS1', 'NS2', 'NS3', 'NS4', 'NS5', 'Notes', 'Batch Number']);
     

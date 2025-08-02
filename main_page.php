@@ -469,7 +469,7 @@ if ($currentView === 'export') {
                 $exportMessage = 'Warning: No active domains found in this batch to export.';
             } else {
                 // Create CSV file with batch number
-                $filename = 'domains_active_batch' . $batchNumber . '_' . date('Y-m-d_H-i-s') . '.csv';
+                $filename = 'exports/domains_active_batch' . $batchNumber . '_' . date('Y-m-d_H-i-s') . '.csv';
                 $file = fopen($filename, 'w');
                 fputcsv($file, ['Domain Name', 'Domain ID', 'Status', 'NS1', 'NS2', 'NS3', 'NS4', 'NS5', 'Notes', 'Batch Number']);
                 
@@ -1036,7 +1036,7 @@ if (userHasSettingsDB()) {
         <div class="lg:hidden fixed inset-0 bg-black bg-opacity-50 z-30 hidden" id="sidebar-overlay"></div>
         
         <!-- Sidebar -->
-        <div class="w-80 bg-white border-r border-gray-200 flex flex-col lg:translate-x-0 -translate-x-full transition-transform duration-300 fixed lg:relative z-40 h-full overflow-y-auto">
+        <div class="w-64 bg-white border-r border-gray-200 flex flex-col lg:translate-x-0 -translate-x-full transition-transform duration-300 fixed lg:relative z-40 h-full overflow-y-auto">
             <!-- Logo -->
             <div class="p-6 border-b border-gray-200">
                 <div class="flex items-center space-x-3">
@@ -1102,7 +1102,7 @@ if (userHasSettingsDB()) {
                             <li>
                                 <a href="?view=database_view" class="flex items-center space-x-3 px-3 py-2 <?= $currentView === 'database_view' ? 'bg-primary-50 text-primary-700 rounded-lg border-l-4 border-primary-600' : 'text-gray-500 hover:bg-gray-50 rounded-lg transition-colors' ?>">
                                     <i data-lucide="database" class="w-4 h-4 <?= $currentView === 'database_view' ? 'text-primary-600' : 'text-gray-400' ?>"></i>
-                                    <span class="text-sm <?= $currentView === 'database_view' ? 'font-semibold text-gray-900' : 'font-normal' ?>">Domains</span>
+                                    <span class="text-sm <?= $currentView === 'database_view' ? 'font-semibold text-gray-900' : 'font-normal' ?>">Domains Table</span>
                                 </a>
                             </li>
                         </ul>
@@ -1157,14 +1157,14 @@ if (userHasSettingsDB()) {
                         <li>
                             <a href="?view=debug" class="flex items-center space-x-3 px-3 py-2 <?= $currentView === 'debug' ? 'bg-primary-50 text-primary-700 rounded-lg border-l-4 border-primary-600' : 'text-gray-500 hover:bg-gray-50 rounded-lg transition-colors' ?>">
                                 <i data-lucide="bug" class="w-4 h-4 <?= $currentView === 'debug' ? 'text-primary-600' : 'text-gray-400' ?>"></i>
-                                <span class="text-sm <?= $currentView === 'debug' ? 'font-semibold text-gray-900' : 'font-normal' ?>">Debug Settings</span>
+                                <span class="text-sm <?= $currentView === 'debug' ? 'font-semibold text-gray-900' : 'font-normal' ?>">Debug Tools</span>
                             </a>
                         </li>
                         <?php endif; ?>
                         <li>
-                            <a href="#" class="flex items-center space-x-3 px-3 py-2 text-gray-500 hover:bg-gray-50 rounded-lg transition-colors">
-                                <i data-lucide="help-circle" class="w-4 h-4 text-gray-400"></i>
-                                <span class="text-sm font-normal">Help</span>
+                            <a href="?view=help" class="flex items-center space-x-3 px-3 py-2 <?= $currentView === 'help' ? 'bg-primary-50 text-primary-700 rounded-lg border-l-4 border-primary-600' : 'text-gray-500 hover:bg-gray-50 rounded-lg transition-colors' ?>">
+                                <i data-lucide="help-circle" class="w-4 h-4 <?= $currentView === 'help' ? 'text-primary-600' : 'text-gray-400' ?>"></i>
+                                <span class="text-sm <?= $currentView === 'help' ? 'font-semibold text-gray-900' : 'font-normal' ?>">Help</span>
                             </a>
                         </li>
                         <li>
@@ -1238,77 +1238,79 @@ if (userHasSettingsDB()) {
                     <p class="text-gray-600">Plan, prioritize, and manage your domains with ease.</p>
                 </div>
 
-                <!-- Setup Progress -->
-                <div id="setupProgressSection" class="bg-white p-6 rounded-xl border border-gray-200 mb-6">
-                    <div class="flex items-center justify-between mb-4">
-                        <h3 class="text-lg font-semibold text-gray-900 flex items-center space-x-2">
-                            <i data-lucide="check-square" class="w-5 h-5 text-primary-600"></i>
-                            <span>Setup Progress</span>
-                        </h3>
-                        <?php if ($completedSteps === $totalSteps && $totalSteps > 0): ?>
-                            <button type="button" id="hideSetupProgress" class="text-gray-500 hover:text-gray-700 transition-colors flex items-center space-x-2">
-                                <i data-lucide="eye-off" class="w-4 h-4"></i>
-                                <span class="text-sm">Hide</span>
-                            </button>
-                        <?php endif; ?>
+                <!-- Domain Statistics Cards -->
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                    <div class="bg-primary-600 text-white p-6 rounded-xl">
+                        <div class="flex items-center justify-between mb-4">
+                            <h3 class="text-sm font-medium text-primary-100">Total Domains</h3>
+                            <div class="w-8 h-8 bg-primary-500 rounded-full flex items-center justify-center">
+                                <i data-lucide="trending-up" class="w-4 h-4"></i>
+                            </div>
+                        </div>
+                        <div class="text-4xl font-bold"><?= $dashboardStats['total_projects'] ?></div>
                     </div>
-                    
-                    <div class="space-y-3">
-                        <div class="flex items-center justify-between">
-                            <div class="flex items-center space-x-3">
-                                <i data-lucide="database" class="w-4 h-4 <?= $setupStatus['database_setup'] ? 'text-green-600' : 'text-gray-400' ?>"></i>
-                                <span class="text-sm font-medium text-gray-900">Database Setup</span>
+
+                    <div class="bg-white p-6 rounded-xl border border-gray-200">
+                        <div class="flex items-center justify-between mb-4">
+                            <h3 class="text-sm font-medium text-gray-500">Active Domains</h3>
+                            <div class="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
+                                <i data-lucide="trending-up" class="w-4 h-4 text-green-600"></i>
                             </div>
-                            <?php if ($setupStatus['database_setup']): ?>
-                                <i data-lucide="check-circle" class="w-4 h-4 text-green-500"></i>
-                            <?php else: ?>
-                                <i data-lucide="circle" class="w-4 h-4 text-gray-300"></i>
-                            <?php endif; ?>
                         </div>
-                        
-                        <div class="flex items-center justify-between">
-                            <div class="flex items-center space-x-3">
-                                <i data-lucide="table" class="w-4 h-4 <?= $setupStatus['tables_created'] ? 'text-green-600' : 'text-gray-400' ?>"></i>
-                                <span class="text-sm font-medium text-gray-900">Database Tables</span>
-                            </div>
-                            <?php if ($setupStatus['tables_created']): ?>
-                                <i data-lucide="check-circle" class="w-4 h-4 text-green-500"></i>
-                            <?php else: ?>
-                                <i data-lucide="circle" class="w-4 h-4 text-gray-300"></i>
-                            <?php endif; ?>
-                        </div>
-                        
-                        <div class="flex items-center justify-between">
-                            <div class="flex items-center space-x-3">
-                                <i data-lucide="settings" class="w-4 h-4 <?= $setupStatus['api_configured'] ? 'text-green-600' : 'text-gray-400' ?>"></i>
-                                <span class="text-sm font-medium text-gray-900">API Configuration</span>
-                            </div>
-                            <?php if ($setupStatus['api_configured']): ?>
-                                <i data-lucide="check-circle" class="w-4 h-4 text-green-500"></i>
-                            <?php else: ?>
-                                <i data-lucide="circle" class="w-4 h-4 text-gray-300"></i>
-                            <?php endif; ?>
-                        </div>
+                        <div class="text-4xl font-bold text-gray-900"><?= $dashboardStats['running_projects'] ?></div>
                     </div>
-                    
-                    <div class="mt-4">
-                        <div class="flex items-center justify-between text-sm text-gray-600 mb-2">
-                            <span>Overall Progress</span>
-                            <span><?= $completedSteps ?>/<?= $totalSteps ?> completed</span>
+
+                    <div class="bg-white p-6 rounded-xl border border-gray-200">
+                        <div class="flex items-center justify-between mb-4">
+                            <div class="flex items-center space-x-2">
+                                <h3 class="text-sm font-medium text-gray-500">Expired Domains</h3>
+                                <div class="relative group">
+                                    <i data-lucide="info" class="w-4 h-4 text-gray-400 cursor-help"></i>
+                                    <div class="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-10 w-48">
+                                        Counts domains with 'expired', 'terminated', or 'cancelled' status.
+                                        <div class="absolute top-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900"></div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="w-8 h-8 bg-red-100 rounded-full flex items-center justify-center">
+                                <i data-lucide="trending-up" class="w-4 h-4 text-red-600"></i>
+                            </div>
                         </div>
-                        <div class="w-full bg-gray-200 rounded-full h-2">
-                            <div class="bg-primary-600 h-2 rounded-full transition-all duration-300" style="width: <?= $progressPercentage ?>%"></div>
+                        <div class="text-4xl font-bold text-gray-900"><?= $dashboardStats['ended_projects'] ?></div>
+                    </div>
+
+                    <div class="bg-white p-6 rounded-xl border border-gray-200">
+                        <div class="flex items-center justify-between mb-4">
+                            <div class="flex items-center space-x-2">
+                                <h3 class="text-sm font-medium text-gray-500">Pending Domains</h3>
+                                <div class="relative group">
+                                    <i data-lucide="info" class="w-4 h-4 text-gray-400 cursor-help"></i>
+                                    <div class="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-10 w-48">
+                                        Counts domains with 'pending', 'pendingtransfer', 'pendingregistration' or other statuses
+                                        <div class="absolute top-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900"></div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="w-8 h-8 bg-yellow-100 rounded-full flex items-center justify-center">
+                                <i data-lucide="clock" class="w-4 h-4 text-yellow-600"></i>
+                            </div>
+                        </div>
+                        <div class="text-4xl font-bold text-gray-900"><?= $dashboardStats['pending_projects'] ?></div>
+                    </div>
+                </div>
+
+                <!-- Info Message -->
+                <div class="mb-6 p-4 rounded-lg bg-blue-50 border border-blue-200 text-blue-800">
+                    <div class="flex items-center space-x-3">
+                        <i data-lucide="info" class="w-5 h-5 text-blue-600"></i>
+                        <div>
+                            <div class="font-semibold">WHMCS API Data</div>
+                            <div class="text-sm mt-1">The domain counts and data shown on this page are from the WHMCS API. This reflects the most current data from your WHMCS system.</div>
                         </div>
                     </div>
                 </div>
 
-                <!-- Show Setup Progress Button (hidden by default) -->
-                <div id="showSetupProgressButton" class="hidden mb-6">
-                    <button type="button" id="showSetupProgress" class="bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-lg font-medium transition-colors flex items-center space-x-2">
-                        <i data-lucide="eye" class="w-4 h-4"></i>
-                        <span>Show Setup Progress</span>
-                    </button>
-                </div>
+
 
                 <!-- Settings Warning -->
                     <?php if (!$hasSettings || !empty($settingsValidation['missing'])): ?>
@@ -1726,6 +1728,78 @@ if (userHasSettingsDB()) {
                  <div class="mb-8">
                      <h1 class="text-2xl font-bold text-gray-900 mb-2">Settings & Profile</h1>
                      <p class="text-gray-600">Configure your API credentials, user profile, and company settings.</p>
+                 </div>
+
+                 <!-- Setup Progress -->
+                 <div id="setupProgressSection" class="bg-white p-6 rounded-xl border border-gray-200 mb-6">
+                     <div class="flex items-center justify-between mb-4">
+                         <h3 class="text-lg font-semibold text-gray-900 flex items-center space-x-2">
+                             <i data-lucide="check-square" class="w-5 h-5 text-primary-600"></i>
+                             <span>Setup Progress</span>
+                         </h3>
+                         <?php if ($completedSteps === $totalSteps && $totalSteps > 0): ?>
+                             <button type="button" id="hideSetupProgress" class="text-gray-500 hover:text-gray-700 transition-colors flex items-center space-x-2">
+                                 <i data-lucide="eye-off" class="w-4 h-4"></i>
+                                 <span class="text-sm">Hide</span>
+                             </button>
+                         <?php endif; ?>
+                     </div>
+                     
+                     <div class="space-y-3">
+                         <div class="flex items-center justify-between">
+                             <div class="flex items-center space-x-3">
+                                 <i data-lucide="database" class="w-4 h-4 <?= $setupStatus['database_setup'] ? 'text-green-600' : 'text-gray-400' ?>"></i>
+                                 <span class="text-sm font-medium text-gray-900">Database Setup</span>
+                             </div>
+                             <?php if ($setupStatus['database_setup']): ?>
+                                 <i data-lucide="check-circle" class="w-4 h-4 text-green-500"></i>
+                             <?php else: ?>
+                                 <i data-lucide="circle" class="w-4 h-4 text-gray-300"></i>
+                             <?php endif; ?>
+                         </div>
+                         
+                         <div class="flex items-center justify-between">
+                             <div class="flex items-center space-x-3">
+                                 <i data-lucide="table" class="w-4 h-4 <?= $setupStatus['tables_created'] ? 'text-green-600' : 'text-gray-400' ?>"></i>
+                                 <span class="text-sm font-medium text-gray-900">Database Tables</span>
+                             </div>
+                             <?php if ($setupStatus['tables_created']): ?>
+                                 <i data-lucide="check-circle" class="w-4 h-4 text-green-500"></i>
+                             <?php else: ?>
+                                 <i data-lucide="circle" class="w-4 h-4 text-gray-300"></i>
+                             <?php endif; ?>
+                         </div>
+                         
+                         <div class="flex items-center justify-between">
+                             <div class="flex items-center space-x-3">
+                                 <i data-lucide="settings" class="w-4 h-4 <?= $setupStatus['api_configured'] ? 'text-green-600' : 'text-gray-400' ?>"></i>
+                                 <span class="text-sm font-medium text-gray-900">API Configuration</span>
+                             </div>
+                             <?php if ($setupStatus['api_configured']): ?>
+                                 <i data-lucide="check-circle" class="w-4 h-4 text-green-500"></i>
+                             <?php else: ?>
+                                 <i data-lucide="circle" class="w-4 h-4 text-gray-300"></i>
+                             <?php endif; ?>
+                         </div>
+                     </div>
+                     
+                     <div class="mt-4">
+                         <div class="flex items-center justify-between text-sm text-gray-600 mb-2">
+                             <span>Overall Progress</span>
+                             <span><?= $completedSteps ?>/<?= $totalSteps ?> completed</span>
+                         </div>
+                         <div class="w-full bg-gray-200 rounded-full h-2">
+                             <div class="bg-primary-600 h-2 rounded-full transition-all duration-300" style="width: <?= $progressPercentage ?>%"></div>
+                         </div>
+                     </div>
+                 </div>
+
+                 <!-- Show Setup Progress Button (hidden by default) -->
+                 <div id="showSetupProgressButton" class="hidden mb-6">
+                     <button type="button" id="showSetupProgress" class="bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-lg font-medium transition-colors flex items-center space-x-2">
+                         <i data-lucide="eye" class="w-4 h-4"></i>
+                         <span>Show Setup Progress</span>
+                     </button>
                  </div>
 
                  <!-- Messages -->
@@ -2742,9 +2816,9 @@ if (userHasSettingsDB()) {
                                          Batch Number
                                          <div class="relative group">
                                              <i data-lucide="info" class="w-4 h-4 text-gray-400 cursor-help"></i>
-                                             <div class="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-800 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap z-10">
-                                                 Batch 1 = domains 1-50, Batch 2 = domains 51-100, etc.
-                                                 <div class="absolute top-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-800"></div>
+                                             <div class="absolute bottom-full left-0 mb-2 px-3 py-2 bg-gray-800 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 w-64 z-10">
+                                                 Batch 1 = domains 1-50<br>Batch 2 = domains 51-100, etc.
+                                                 <div class="absolute top-full left-4 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-800"></div>
                                              </div>
                                          </div>
                                      </label>
@@ -3302,7 +3376,7 @@ if (userHasSettingsDB()) {
                  <!-- Database View Content -->
                  <!-- Page Header -->
                  <div class="mb-8">
-                     <h1 class="text-2xl font-bold text-gray-900 mb-2">🌐 Domains Database</h1>
+                     <h1 class="text-2xl font-bold text-gray-900 mb-2">🌐 Domains Table</h1>
                      <p class="text-gray-600">View and manage domains from local database</p>
                  </div>
 
@@ -3345,7 +3419,7 @@ if (userHasSettingsDB()) {
                                  <i data-lucide="globe" class="w-3 h-3"></i>
                              </div>
                          </div>
-                         <div class="text-3xl font-bold"><?= $databaseViewDomainStats['total_domains'] ?? 0 ?></div>
+                         <div class="text-4xl font-bold"><?= $databaseViewDomainStats['total_domains'] ?? 0 ?></div>
                      </div>
 
                      <div class="bg-white p-4 rounded-xl border border-gray-200">
@@ -3355,7 +3429,7 @@ if (userHasSettingsDB()) {
                                  <i data-lucide="check-circle" class="w-3 h-3 text-green-600"></i>
                              </div>
                          </div>
-                         <div class="text-3xl font-bold text-gray-900"><?= $databaseViewDomainStats['active_domains'] ?? 0 ?></div>
+                         <div class="text-4xl font-bold text-gray-900"><?= $databaseViewDomainStats['active_domains'] ?? 0 ?></div>
                      </div>
 
                      <div class="bg-white p-4 rounded-xl border border-gray-200">
@@ -3365,7 +3439,7 @@ if (userHasSettingsDB()) {
                                  <i data-lucide="alert-triangle" class="w-3 h-3 text-red-600"></i>
                              </div>
                          </div>
-                         <div class="text-3xl font-bold text-gray-900"><?= $databaseViewDomainStats['expired_domains'] ?? 0 ?></div>
+                         <div class="text-4xl font-bold text-gray-900"><?= $databaseViewDomainStats['expired_domains'] ?? 0 ?></div>
                      </div>
 
                      <div class="bg-white p-4 rounded-xl border border-gray-200">
@@ -3375,7 +3449,18 @@ if (userHasSettingsDB()) {
                                  <i data-lucide="clock" class="w-3 h-3 text-yellow-600"></i>
                              </div>
                          </div>
-                         <div class="text-3xl font-bold text-gray-900"><?= $databaseViewDomainStats['pending_domains'] ?? 0 ?></div>
+                         <div class="text-4xl font-bold text-gray-900"><?= $databaseViewDomainStats['pending_domains'] ?? 0 ?></div>
+                     </div>
+                 </div>
+
+                 <!-- Info Message -->
+                 <div class="mb-6 p-4 rounded-lg bg-blue-50 border border-blue-200 text-blue-800">
+                     <div class="flex items-center space-x-3">
+                         <i data-lucide="info" class="w-5 h-5 text-blue-600"></i>
+                         <div>
+                             <div class="font-semibold">Local Database Data</div>
+                             <div class="text-sm mt-1">The domain counts and data shown on this page are from your local database. To sync the latest data from WHMCS, use the "Sync Data" feature.</div>
+                         </div>
                      </div>
                  </div>
 
@@ -3486,12 +3571,12 @@ if (userHasSettingsDB()) {
                                  <thead class="bg-gray-50">
                                      <tr>
                                          <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-1/4">Domain Name</th>
-                                         <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-1/6">Registrar</th>
-                                         <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-1/6">Status</th>
+                                         <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-16">Registrar</th>
+                                         <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-1/8">Status</th>
                                          <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-1/6">Expiry Date</th>
                                          <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-1/6">Nameservers</th>
                                          <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-1/6">Last Synced</th>
-                                         <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-1/6">Actions</th>
+                                         <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-1/8">Actions</th>
                                      </tr>
                                  </thead>
                                  <tbody class="bg-white divide-y divide-gray-200">
@@ -3508,7 +3593,7 @@ if (userHasSettingsDB()) {
                                                  </div>
                                              </td>
                                              <td class="px-3 py-4">
-                                                 <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                                 <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 truncate max-w-full" title="<?= htmlspecialchars($domain['registrar'] ?? 'Unknown') ?>">
                                                      <?= htmlspecialchars($domain['registrar'] ?? 'Unknown') ?>
                                                  </span>
                                              </td>
@@ -3528,7 +3613,7 @@ if (userHasSettingsDB()) {
                                                      <?= htmlspecialchars($status) ?>
                                                  </span>
                                              </td>
-                                             <td class="px-3 py-4 text-sm text-gray-900">
+                                             <td class="px-3 py-4 text-xs text-gray-900">
                                                  <?php 
                                                  if (!empty($domain['expiry_date'])) {
                                                      echo date('M j, Y', strtotime($domain['expiry_date']));
@@ -3549,7 +3634,7 @@ if (userHasSettingsDB()) {
                                                      <span class="text-gray-400">Not available</span>
                                                  <?php endif; ?>
                                              </td>
-                                             <td class="px-3 py-4 text-sm text-gray-500">
+                                             <td class="px-3 py-4 text-xs text-gray-500">
                                                  <?= date('M j, Y g:i A', strtotime($domain['last_synced'])) ?>
                                              </td>
                                              <td class="px-3 py-4 text-sm text-gray-500">
@@ -3779,42 +3864,56 @@ if (userHasSettingsDB()) {
                          <div id="syncProgress" class="bg-white rounded-xl border border-gray-200 p-6 mb-6" style="display: none;">
                              <h3 class="text-lg font-semibold text-gray-900 mb-4">Sync Progress</h3>
                              
-                             <div class="space-y-4">
-                                 <div class="flex items-center justify-between">
-                                     <span class="text-sm font-medium text-gray-700">Status:</span>
-                                     <span id="syncStatus" class="text-sm font-medium text-blue-600">Initializing...</span>
+                             <!-- Progress Bar -->
+                             <div class="mb-6">
+                                 <div class="flex items-center justify-between mb-2">
+                                     <span class="text-sm font-medium text-gray-700">Sync Progress</span>
+                                     <span id="progressPercentage" class="text-sm font-medium text-gray-900">0%</span>
                                  </div>
-                                 
-                                 <div class="flex items-center justify-between">
-                                     <span class="text-sm font-medium text-gray-700">Domains Found:</span>
-                                     <span id="domainsFound" class="text-sm font-medium text-gray-900">0</span>
-                                 </div>
-                                 
-                                 <div class="flex items-center justify-between">
-                                     <span class="text-sm font-medium text-gray-700">Domains Processed:</span>
-                                     <span id="domainsProcessed" class="text-sm font-medium text-gray-900">0</span>
-                                 </div>
-                                 
-                                 <div class="flex items-center justify-between">
-                                     <span class="text-sm font-medium text-gray-700">Domains Added:</span>
-                                     <span id="domainsAdded" class="text-sm font-medium text-green-600">0</span>
-                                 </div>
-                                 
-                                 <div class="flex items-center justify-between">
-                                     <span class="text-sm font-medium text-gray-700">Domains Updated:</span>
-                                     <span id="domainsUpdated" class="text-sm font-medium text-blue-600">0</span>
-                                 </div>
-                                 
-                                 <div class="flex items-center justify-between">
-                                     <span class="text-sm font-medium text-gray-700">Errors:</span>
-                                     <span id="syncErrors" class="text-sm font-medium text-red-600">0</span>
+                                 <div class="w-full bg-gray-200 rounded-full h-3">
+                                     <div id="progressBar" class="bg-gradient-to-r from-blue-500 to-green-500 h-3 rounded-full transition-all duration-300 ease-out" style="width: 0%"></div>
                                  </div>
                              </div>
                              
-                             <div class="mt-4">
-                                 <div class="w-full bg-gray-200 rounded-full h-2">
-                                     <div id="progressBar" class="bg-primary-600 h-2 rounded-full transition-all duration-300" style="width: 0%"></div>
+                             <!-- Current Domain Status -->
+                             <div class="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                                 <div class="flex items-center justify-between mb-2">
+                                     <span class="text-sm font-medium text-blue-700">Current Domain:</span>
+                                     <span id="currentDomain" class="text-sm font-medium text-blue-900">-</span>
                                  </div>
+                                 <div class="flex items-center justify-between">
+                                     <span class="text-sm font-medium text-blue-700">Status:</span>
+                                     <span id="currentStatus" class="text-sm font-medium text-blue-600">Waiting...</span>
+                                 </div>
+                             </div>
+                             
+                             <!-- Statistics Grid -->
+                             <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                                 <div class="bg-gray-50 rounded-lg p-3">
+                                     <div class="text-xs font-medium text-gray-500 uppercase tracking-wide">Domains Found</div>
+                                     <div id="domainsFound" class="text-lg font-semibold text-gray-900">0</div>
+                                 </div>
+                                 
+                                 <div class="bg-gray-50 rounded-lg p-3">
+                                     <div class="text-xs font-medium text-gray-500 uppercase tracking-wide">Processed</div>
+                                     <div id="domainsProcessed" class="text-lg font-semibold text-gray-900">0</div>
+                                 </div>
+                                 
+                                 <div class="bg-green-50 rounded-lg p-3">
+                                     <div class="text-xs font-medium text-green-500 uppercase tracking-wide">Added</div>
+                                     <div id="domainsAdded" class="text-lg font-semibold text-green-600">0</div>
+                                 </div>
+                                 
+                                 <div class="bg-blue-50 rounded-lg p-3">
+                                     <div class="text-xs font-medium text-blue-500 uppercase tracking-wide">Updated</div>
+                                     <div id="domainsUpdated" class="text-lg font-semibold text-blue-600">0</div>
+                                 </div>
+                             </div>
+                             
+                             <!-- Error Counter -->
+                             <div class="flex items-center justify-between p-3 bg-red-50 rounded-lg border border-red-200">
+                                 <span class="text-sm font-medium text-red-700">Errors:</span>
+                                 <span id="syncErrors" class="text-sm font-medium text-red-600">0</span>
                              </div>
                          </div>
 
@@ -4025,7 +4124,7 @@ if (userHasSettingsDB()) {
                  <div class="mb-8">
                      <div class="flex items-center justify-between">
                          <div>
-                             <h1 class="text-2xl font-bold text-gray-900 mb-2">🔍 Settings Debug</h1>
+                             <h1 class="text-2xl font-bold text-gray-900 mb-2">🔍 Debug Tools</h1>
                              <p class="text-gray-600">Diagnostic information for troubleshooting settings persistence</p>
                          </div>
                          <div class="flex items-center space-x-2 text-blue-600 bg-blue-50 px-4 py-2 rounded-lg">
@@ -4349,24 +4448,87 @@ if (userHasSettingsDB()) {
                      </div>
                  </div>
 
-                 <!-- Action Buttons -->
-                 <div class="flex flex-col sm:flex-row gap-4">
-                     <a href="?view=settings" class="bg-primary-600 hover:bg-primary-700 text-white px-6 py-3 rounded-lg font-medium transition-colors flex items-center justify-center space-x-2">
-                         <i data-lucide="settings" class="w-5 h-5"></i>
-                         <span>Go to Settings</span>
-                     </a>
-                     <a href="?view=dashboard" class="bg-white hover:bg-gray-50 text-gray-700 border border-gray-300 px-6 py-3 rounded-lg font-medium transition-colors flex items-center justify-center space-x-2">
-                         <i data-lucide="home" class="w-5 h-5"></i>
-                         <span>Back to Dashboard</span>
-                     </a>
-                     <button onclick="location.reload()" class="bg-white hover:bg-gray-50 text-gray-700 border border-gray-300 px-6 py-3 rounded-lg font-medium transition-colors flex items-center justify-center space-x-2">
-                         <i data-lucide="refresh-cw" class="w-5 h-5"></i>
-                         <span>Refresh Debug Info</span>
-                     </button>
+
+                 
+                 <?php endif; ?>
+                 
+                 <?php elseif ($currentView === 'help'): ?>
+                 <!-- Help Content -->
+                 <div class="mb-8">
+                     <h1 class="text-2xl font-bold text-gray-900 mb-2">📚 Help & Documentation</h1>
+                     <p class="text-gray-600">Complete setup guide and troubleshooting information for Domain Tools Management Suite.</p>
+                 </div>
+                 
+                 <div class="bg-white p-6 rounded-xl border border-gray-200 mb-8">
+                     <h2 class="text-lg font-semibold text-gray-900 mb-4">Installation & Setup Guide</h2>
+                     <div class="space-y-4">
+                         <div>
+                             <h3 class="font-semibold text-gray-900 mb-2">Step 1: File Upload</h3>
+                             <p class="text-sm text-gray-600">Upload all application files to your web server directory. Ensure PHP 7.4+ is installed and the web server has read/write permissions.</p>
+                         </div>
+                         <div>
+                             <h3 class="font-semibold text-gray-900 mb-2">Step 2: Database Setup</h3>
+                             <p class="text-sm text-gray-600">Create a new MySQL/MariaDB database and note down the connection details (host, port, name, username, password).</p>
+                         </div>
+                         <div>
+                             <h3 class="font-semibold text-gray-900 mb-2">Step 3: Configure Settings</h3>
+                             <p class="text-sm text-gray-600">Go to Settings → Database Configuration and enter your database details. Test the connection and save settings.</p>
+                         </div>
+                         <div>
+                             <h3 class="font-semibold text-gray-900 mb-2">Step 4: Create Tables</h3>
+                             <p class="text-sm text-gray-600">In Settings, use the "Create Tables" button to set up the required database tables for the application.</p>
+                         </div>
+                         <div>
+                             <h3 class="font-semibold text-gray-900 mb-2">Step 5: WHMCS API Setup</h3>
+                             <p class="text-sm text-gray-600">Configure your WHMCS API credentials in Settings. Create API identifier and secret in WHMCS admin panel.</p>
+                         </div>
+                     </div>
+                 </div>
+                 
+                 <div class="bg-white p-6 rounded-xl border border-gray-200 mb-8">
+                     <h2 class="text-lg font-semibold text-gray-900 mb-4">Troubleshooting</h2>
+                     <div class="space-y-4">
+                         <div class="bg-red-50 border border-red-200 rounded-lg p-4">
+                             <h3 class="font-semibold text-red-900 mb-2">Database Issues</h3>
+                             <p class="text-sm text-red-800">Verify database credentials, ensure server is running, check user permissions.</p>
+                         </div>
+                         <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                             <h3 class="font-semibold text-yellow-900 mb-2">API Issues</h3>
+                             <p class="text-sm text-yellow-800">Check WHMCS API credentials, verify API URL accessibility, ensure API access is enabled.</p>
+                         </div>
+                         <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                             <h3 class="font-semibold text-blue-900 mb-2">Debug Tools</h3>
+                             <p class="text-sm text-blue-800">Use Settings → Debug Tools (admin only) to diagnose issues. Test database connection, API access, and nameserver functionality.</p>
+                         </div>
+                     </div>
                  </div>
                  
                  <?php endif; ?>
-                 <?php endif; ?>
+                 
+                 <!-- Contact Developer Section -->
+                 <div class="mt-12 bg-gray-50 border border-gray-200 rounded-xl p-6">
+                     <div class="text-center">
+                         <h3 class="text-lg font-semibold text-gray-900 mb-2">Need Help?</h3>
+                         <p class="text-gray-600 mb-4">If you're experiencing issues or have questions about this application, please don't hesitate to contact the developer.</p>
+                         <div class="flex flex-col items-center space-y-3">
+                             <div class="flex items-center justify-center space-x-2">
+                                 <i data-lucide="mail" class="w-5 h-5 text-gray-400"></i>
+                                 <a href="mailto:guilio@kaldera.co.za" class="text-primary-600 hover:text-primary-700 font-medium transition-colors">
+                                     guilio@kaldera.co.za
+                                 </a>
+                             </div>
+                             <?php if (isServerAdmin()): ?>
+                             <div class="flex items-center justify-center space-x-2">
+                                 <i data-lucide="bug" class="w-5 h-5 text-gray-400"></i>
+                                 <a href="?view=debug" class="text-primary-600 hover:text-primary-700 font-medium transition-colors">
+                                     Debug Tools
+                                 </a>
+                             </div>
+                             <?php endif; ?>
+                         </div>
+                         <p class="text-sm text-gray-500 mt-3">We're here to help you get the most out of your domain management experience.</p>
+                     </div>
+                 </div>
              </main>
          </div>
      </div>
@@ -4480,6 +4642,10 @@ if (userHasSettingsDB()) {
             resetProgress();
             addLogMessage('Starting sync for batch ' + batchNumber + '...');
             
+            // Update current status
+            const currentStatus = document.getElementById('currentStatus');
+            if (currentStatus) currentStatus.textContent = 'Initializing...';
+            
             // Make AJAX request to start sync using ultra-fast endpoint
             fetch('ultra_simple_sync.php', {
                 method: 'POST',
@@ -4493,37 +4659,99 @@ if (userHasSettingsDB()) {
             .then(data => {
                 if (data.success) {
                     currentLogId = data.log_id;
-                    updateProgress(data.data);
-                    addLogMessage('Batch ' + batchNumber + ' completed successfully!');
                     
-                    // Show batch information
-                    if (data.data.total_domains && data.data.batch_start && data.data.batch_end) {
-                        addLogMessage('Processed domains ' + data.data.batch_start + '-' + data.data.batch_end + ' of ' + data.data.total_domains);
-                    }
+                    // Start polling for progress updates
+                    pollSyncProgress(batchNumber, batchSize);
                     
-                    addLogMessage('Domains in batch: ' + data.data.domains_found);
-                    addLogMessage('Domains processed: ' + data.data.domains_processed);
-                    addLogMessage('Domains added: ' + data.data.domains_added);
-                    addLogMessage('Domains updated: ' + data.data.domains_updated);
+                    addLogMessage('Batch ' + batchNumber + ' started successfully!');
+                    addLogMessage('Monitoring progress in real-time...');
                     
-                    if (data.data.errors > 0) {
-                        addLogMessage('Errors: ' + data.data.errors, 'error');
-                    }
-                    
-                    // Suggest next batch if there are more domains
-                    if (data.data.total_domains && data.data.batch_end < data.data.total_domains) {
-                        const nextBatch = parseInt(batchNumber) + 1;
-                        addLogMessage('💡 Tip: Run batch ' + nextBatch + ' to continue syncing remaining domains');
-                    }
                 } else {
                     addLogMessage('Sync failed: ' + (data.error || 'Unknown error'), 'error');
+                    syncInProgress = false;
+                    if (startSyncBtn) startSyncBtn.style.display = 'inline-flex';
+                    if (stopSyncBtn) stopSyncBtn.style.display = 'none';
                 }
             })
             .catch(error => {
                 addLogMessage('Network error: ' + error.message, 'error');
-            })
-            .finally(() => {
                 syncInProgress = false;
+                if (startSyncBtn) startSyncBtn.style.display = 'inline-flex';
+                if (stopSyncBtn) stopSyncBtn.style.display = 'none';
+            });
+        }
+        
+        function pollSyncProgress(batchNumber, batchSize) {
+            if (!syncInProgress) return;
+            
+            fetch('ultra_simple_sync.php', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                body: 'action=check_progress&batch_number=' + batchNumber + '&batch_size=' + batchSize
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    updateProgress(data.data);
+                    
+                    // Update log with current domain if available
+                    if (data.data.current_domain) {
+                        const currentStatus = document.getElementById('currentStatus');
+                        if (currentStatus && currentStatus.textContent !== 'Completed') {
+                            addLogMessage('Processing: ' + data.data.current_domain);
+                        }
+                    }
+                    
+                    // Check if sync is complete
+                    if (data.data.status === 'completed') {
+                        addLogMessage('✅ Batch ' + batchNumber + ' completed successfully!');
+                        
+                        // Show batch information
+                        if (data.data.total_domains && data.data.batch_start && data.data.batch_end) {
+                            addLogMessage('Processed domains ' + data.data.batch_start + '-' + data.data.batch_end + ' of ' + data.data.total_domains);
+                        }
+                        
+                        addLogMessage('Domains in batch: ' + data.data.domains_found);
+                        addLogMessage('Domains processed: ' + data.data.domains_processed);
+                        addLogMessage('Domains added: ' + data.data.domains_added);
+                        addLogMessage('Domains updated: ' + data.data.domains_updated);
+                        
+                        if (data.data.errors > 0) {
+                            addLogMessage('Errors: ' + data.data.errors, 'error');
+                        }
+                        
+                        // Suggest next batch if there are more domains
+                        if (data.data.total_domains && data.data.batch_end < data.data.total_domains) {
+                            const nextBatch = parseInt(batchNumber) + 1;
+                            addLogMessage('💡 Tip: Run batch ' + nextBatch + ' to continue syncing remaining domains');
+                        }
+                        
+                        syncInProgress = false;
+                        const startSyncBtn = document.getElementById('startSync');
+                        const stopSyncBtn = document.getElementById('stopSync');
+                        if (startSyncBtn) startSyncBtn.style.display = 'inline-flex';
+                        if (stopSyncBtn) stopSyncBtn.style.display = 'none';
+                    } else {
+                        // Continue polling
+                        setTimeout(() => pollSyncProgress(batchNumber, batchSize), 1000);
+                    }
+                } else {
+                    addLogMessage('Progress check failed: ' + (data.error || 'Unknown error'), 'error');
+                    syncInProgress = false;
+                    const startSyncBtn = document.getElementById('startSync');
+                    const stopSyncBtn = document.getElementById('stopSync');
+                    if (startSyncBtn) startSyncBtn.style.display = 'inline-flex';
+                    if (stopSyncBtn) stopSyncBtn.style.display = 'none';
+                }
+            })
+            .catch(error => {
+                addLogMessage('Progress check error: ' + error.message, 'error');
+                syncInProgress = false;
+                const startSyncBtn = document.getElementById('startSync');
+                const stopSyncBtn = document.getElementById('stopSync');
                 if (startSyncBtn) startSyncBtn.style.display = 'inline-flex';
                 if (stopSyncBtn) stopSyncBtn.style.display = 'none';
             });
@@ -4564,43 +4792,60 @@ if (userHasSettingsDB()) {
         }
         
         function resetProgress() {
-            const syncStatus = document.getElementById('syncStatus');
+            const currentDomain = document.getElementById('currentDomain');
+            const currentStatus = document.getElementById('currentStatus');
             const domainsFound = document.getElementById('domainsFound');
             const domainsProcessed = document.getElementById('domainsProcessed');
             const domainsAdded = document.getElementById('domainsAdded');
             const domainsUpdated = document.getElementById('domainsUpdated');
             const syncErrors = document.getElementById('syncErrors');
             const progressBar = document.getElementById('progressBar');
+            const progressPercentage = document.getElementById('progressPercentage');
             
-            if (syncStatus) syncStatus.textContent = 'Initializing...';
+            if (currentDomain) currentDomain.textContent = '-';
+            if (currentStatus) currentStatus.textContent = 'Waiting...';
             if (domainsFound) domainsFound.textContent = '0';
             if (domainsProcessed) domainsProcessed.textContent = '0';
             if (domainsAdded) domainsAdded.textContent = '0';
             if (domainsUpdated) domainsUpdated.textContent = '0';
             if (syncErrors) syncErrors.textContent = '0';
             if (progressBar) progressBar.style.width = '0%';
+            if (progressPercentage) progressPercentage.textContent = '0%';
         }
         
         function updateProgress(data) {
-            const syncStatus = document.getElementById('syncStatus');
+            const currentDomain = document.getElementById('currentDomain');
+            const currentStatus = document.getElementById('currentStatus');
             const domainsFound = document.getElementById('domainsFound');
             const domainsProcessed = document.getElementById('domainsProcessed');
             const domainsAdded = document.getElementById('domainsAdded');
             const domainsUpdated = document.getElementById('domainsUpdated');
             const syncErrors = document.getElementById('syncErrors');
             const progressBar = document.getElementById('progressBar');
+            const progressPercentage = document.getElementById('progressPercentage');
             
-            if (syncStatus) syncStatus.textContent = data.status === 'completed' ? 'Completed' : 'Running';
+            // Update current domain and status
+            if (currentDomain && data.current_domain) {
+                currentDomain.textContent = data.current_domain;
+            }
+            if (currentStatus) {
+                currentStatus.textContent = data.status === 'completed' ? 'Completed' : 'Processing...';
+            }
+            
+            // Update statistics
             if (domainsFound) domainsFound.textContent = data.domains_found || 0;
             if (domainsProcessed) domainsProcessed.textContent = data.domains_processed || 0;
             if (domainsAdded) domainsAdded.textContent = data.domains_added || 0;
             if (domainsUpdated) domainsUpdated.textContent = data.domains_updated || 0;
             if (syncErrors) syncErrors.textContent = data.errors || 0;
             
-            // Update progress bar
+            // Update progress bar and percentage
             if (progressBar && data.domains_found > 0) {
-                const progress = (data.domains_processed / data.domains_found) * 100;
+                const progress = Math.min((data.domains_processed / data.domains_found) * 100, 100);
                 progressBar.style.width = progress + '%';
+                if (progressPercentage) {
+                    progressPercentage.textContent = Math.round(progress) + '%';
+                }
             }
         }
         

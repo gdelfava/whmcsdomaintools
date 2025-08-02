@@ -78,7 +78,7 @@ if (isset($_POST['action'])) {
         
         if ($shouldComplete) {
             // Export complete - generate CSV file
-            $filename = 'domains_progress_batch' . $batchNumber . '_' . date('Y-m-d_H-i-s') . '.csv';
+            $filename = 'exports/domains_progress_batch' . $batchNumber . '_' . date('Y-m-d_H-i-s') . '.csv';
             
             // Read the session data to get all results
             $allResults = $_SESSION['export_results_' . $batchNumber] ?? [];
@@ -247,7 +247,7 @@ if (isset($_POST['action'])) {
     
     // Handle CSV files list request
     if ($_POST['action'] === 'get_csv_files') {
-        $csvFiles = glob("*.csv");
+        $csvFiles = glob("exports/*.csv");
         $filesList = [];
         
         foreach ($csvFiles as $file) {

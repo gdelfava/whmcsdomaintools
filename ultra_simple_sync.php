@@ -61,6 +61,7 @@ if (!isset($_SERVER['REQUEST_METHOD']) || $_SERVER['REQUEST_METHOD'] !== 'POST')
     exit;
 }
 
+$action = $_POST['action'] ?? 'sync';
 $batchNumber = isset($_POST['batch_number']) ? (int)$_POST['batch_number'] : 1;
 $batchSize = isset($_POST['batch_size']) ? (int)$_POST['batch_size'] : 10;
 $userEmail = $_SESSION['user_email'] ?? '';
@@ -83,6 +84,29 @@ try {
     require_once 'config.php';
     require_once 'database_v2.php';
     require_once 'user_settings_db.php';
+    
+    // Handle progress checking
+    if ($action === 'check_progress') {
+        // Get progress from session
+        $progressKey = "sync_progress_{$batchNumber}_{$batchSize}";
+        $progress = $_SESSION[$progressKey] ?? null;
+        
+        if ($progress) {
+            ob_end_clean();
+            echo json_encode([
+                'success' => true,
+                'data' => $progress
+            ]);
+            exit;
+        } else {
+            ob_end_clean();
+            echo json_encode([
+                'success' => false,
+                'error' => 'No progress data found'
+            ]);
+            exit;
+        }
+    }
     
     // Get user settings from database
     $userSettings = new UserSettingsDB();
@@ -164,8 +188,35 @@ try {
     $added = 0;
     $updated = 0;
     $errors = 0;
+    $currentIndex = 0;
+    
+    // Initialize progress tracking
+    $progressKey = "sync_progress_{$batchNumber}_{$batchSize}";
+    $_SESSION[$progressKey] = [
+        'domains_found' => count($domains),
+        'domains_processed' => 0,
+        'domains_added' => 0,
+        'domains_updated' => 0,
+        'errors' => 0,
+        'total_domains' => $totalDomains,
+        'batch_start' => $offset + 1,
+        'batch_end' => $offset + count($domains),
+        'status' => 'processing',
+        'current_domain' => '',
+        'current_index' => 0
+    ];
     
     foreach ($domains as $domain) {
+        $currentIndex++;
+        $domainName = $domain['domainname'] ?? 'Unknown';
+        
+        // Update progress with current domain
+        $_SESSION[$progressKey]['current_domain'] = $domainName;
+        $_SESSION[$progressKey]['current_index'] = $currentIndex;
+        $_SESSION[$progressKey]['domains_processed'] = $processed;
+        $_SESSION[$progressKey]['domains_added'] = $added;
+        $_SESSION[$progressKey]['domains_updated'] = $updated;
+        $_SESSION[$progressKey]['errors'] = $errors;
         try {
             // Extract domain data
             $domainId = $domain['id'] ?? '';
@@ -288,6 +339,14 @@ try {
             error_log("Stack trace: " . $e->getTraceAsString());
         }
     }
+    
+    // Update final progress and mark as completed
+    $_SESSION[$progressKey]['domains_processed'] = $processed;
+    $_SESSION[$progressKey]['domains_added'] = $added;
+    $_SESSION[$progressKey]['domains_updated'] = $updated;
+    $_SESSION[$progressKey]['errors'] = $errors;
+    $_SESSION[$progressKey]['status'] = 'completed';
+    $_SESSION[$progressKey]['current_domain'] = '';
     
     // Return simple success response
     ob_end_clean();
